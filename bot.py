@@ -6,6 +6,7 @@ import base64
 import hashlib
 import requests
 from flask import Flask, request, jsonify
+from datetime import datetime, timezone
 
 app = Flask(__name__)
 
@@ -29,7 +30,7 @@ def fetch_okx_server_timestamp():
         return server_time
     except Exception as e:
         print("[ERROR] Failed to fetch server timestamp:", e)
-        fallback = str(int(time.time() * 1000))
+        fallback = datetime.now(timezone.utc).isoformat(timespec='milliseconds').replace('+00:00', 'Z')
         print("[DEBUG] Fallback timestamp:", fallback)
         return fallback
 
@@ -70,12 +71,7 @@ def place_order(signal, pair, entry, sl, tp1, tp2, risk, timestamp):
 
     res = requests.post(url, headers=HEADERS, data=body)
     print("[DEBUG] OKX Raw Response:", res.status_code, res.text)
-
-    try:
-        return res.json()
-    except Exception as e:
-        print("[ERROR] Failed to parse OKX response as JSON:", e)
-        return res.text
+    return res.json()
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
@@ -93,16 +89,11 @@ def webhook():
             data['risk'],
             timestamp
         )
-
-        if isinstance(response, dict):
-            return jsonify({"status": "Order sent", "okx_response": response})
-        else:
-            print("[ERROR] Non-JSON response from OKX:", response)
-            return jsonify({"status": "Error", "message": "Unexpected response from OKX"})
-
+        return jsonify({"status": "Order sent", "okx_response": response})
     except Exception as e:
         print("[ERROR] Webhook Exception:", str(e))
         return jsonify({"status": "Error", "message": str(e)})
 
 if __name__ == "__main__":
     app.run(debug=False, host="0.0.0.0", port=10000)
+
