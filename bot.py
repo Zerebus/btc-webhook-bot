@@ -9,26 +9,27 @@ from flask import Flask, request, jsonify
 
 app = Flask(__name__)
 
-# Load API keys securely from environment
+# Load API keys from environment
 OKX_API_KEY = os.environ.get("OKX_API_KEY")
 OKX_SECRET_KEY = os.environ.get("OKX_SECRET_KEY")
 OKX_PASSPHRASE = os.environ.get("OKX_PASSPHRASE")
 
 BASE_URL = "https://www.okx.com"
 
-# Generate OKX signature
-def generate_signature(timestamp, method, request_path, body=""):
-    message = f"{timestamp}{method}{request_path}{body}"
-    mac = hmac.new(bytes(OKX_SECRET_KEY, encoding='utf-8'), msg=message.encode('utf-8'), digestmod=hashlib.sha256)
-    return base64.b64encode(mac.digest()).decode()
 
-# Build and send order to OKX
+def generate_signature(timestamp, method, request_path, body=''):
+    message = f"{timestamp}{method}{request_path}{body}"
+    mac = hmac.new(OKX_SECRET_KEY.encode(), msg=message.encode(), digestmod=hashlib.sha256)
+    d = mac.digest()
+    return base64.b64encode(d).decode()
+
+
 def place_order(signal, pair, entry, sl, tp1, tp2, risk):
-    timestamp = str(time.time())  # Full-precision timestamp
+    timestamp = str(int(time.time() * 1000))  # Milliseconds timestamp
     symbol = pair.replace("-", "").upper()
     side = "buy" if signal == "LONG" else "sell"
 
-    # Calculate size
+    # Calculate order size
     notional = 376 * float(risk.strip('%')) / 100
     size = round(notional / entry, 4)
 
@@ -41,24 +42,25 @@ def place_order(signal, pair, entry, sl, tp1, tp2, risk):
     }
 
     body = json.dumps(order)
-    signature = generate_signature(timestamp, "POST", "/api/v5/trade/order", body)
+    request_path = "/api/v5/trade/order"
+    signature = generate_signature(timestamp, "POST", request_path, body)
 
     headers = {
         "Content-Type": "application/json",
         "OK-ACCESS-KEY": OKX_API_KEY,
-        "OK-ACCESS-PASSPHRASE": OKX_PASSPHRASE,
         "OK-ACCESS-SIGN": signature,
-        "OK-ACCESS-TIMESTAMP": timestamp
+        "OK-ACCESS-TIMESTAMP": timestamp,
+        "OK-ACCESS-PASSPHRASE": OKX_PASSPHRASE
     }
 
-    url = f"{BASE_URL}/api/v5/trade/order"
+    url = f"{BASE_URL}{request_path}"
     res = requests.post(url, headers=headers, data=body)
     return res.json()
 
-# Flask route for webhook
+
 @app.route("/webhook", methods=["POST"])
 def webhook():
-    data = request.get_json()
+    data = request.json
     try:
         signal = data["signal"]
         pair = data["pair"]
@@ -73,7 +75,7 @@ def webhook():
     except Exception as e:
         return jsonify({"status": "Error", "message": str(e)})
 
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=10000)
-
 
