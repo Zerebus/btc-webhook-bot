@@ -63,6 +63,7 @@ def place_order(signal, pair, entry, sl, tp1, tp2, risk):
 @app.route("/webhook", methods=["POST"])
 def webhook():
     data = request.get_json()
+    print("[Webhook Received]", data)
     try:
         response = place_order(
             data['signal'],
@@ -73,8 +74,10 @@ def webhook():
             float(data['tp2']),
             data['risk']
         )
+        print("[Order Sent] OKX Response:", response)
         return jsonify({"status": "Order sent", "okx_response": response})
     except Exception as e:
+        print("[Error]", str(e))
         return jsonify({"status": "Error", "message": str(e)})
 
 if __name__ == "__main__":
