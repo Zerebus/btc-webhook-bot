@@ -22,7 +22,12 @@ HEADERS = {
 }
 
 def get_timestamp():
-    return str(int(time.time() * 1000))
+    try:
+        res = requests.get(f"{BASE_URL}/api/v5/public/time")
+        return res.json()["data"][0]["ts"]
+    except Exception as e:
+        print("Failed to fetch server timestamp:", e)
+        return str(int(time.time() * 1000))
 
 def generate_signature(timestamp, method, request_path, body=""):
     message = f"{timestamp}{method}{request_path}{body}"
@@ -63,8 +68,8 @@ def place_order(signal, pair, entry, sl, tp1, tp2, risk):
 @app.route("/webhook", methods=["POST"])
 def webhook():
     data = request.get_json()
-    print("[Webhook Received]", data)
     try:
+        print("Incoming Webhook Data:", data)
         response = place_order(
             data['signal'],
             data['pair'],
@@ -74,10 +79,10 @@ def webhook():
             float(data['tp2']),
             data['risk']
         )
-        print("[Order Sent] OKX Response:", response)
+        print("OKX Response:", response)
         return jsonify({"status": "Order sent", "okx_response": response})
     except Exception as e:
-        print("[Error]", str(e))
+        print("Webhook Error:", str(e))
         return jsonify({"status": "Error", "message": str(e)})
 
 if __name__ == "__main__":
