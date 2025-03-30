@@ -6,7 +6,6 @@ import base64
 import hashlib
 import requests
 from flask import Flask, request, jsonify
-from datetime import datetime, timezone
 
 app = Flask(__name__)
 
@@ -30,7 +29,7 @@ def fetch_okx_server_timestamp():
         return server_time
     except Exception as e:
         print("[ERROR] Failed to fetch server timestamp:", e)
-        fallback = datetime.now(timezone.utc).isoformat(timespec='milliseconds').replace('+00:00', 'Z')
+        fallback = str(int(time.time() * 1000))
         print("[DEBUG] Fallback timestamp:", fallback)
         return fallback
 
@@ -40,7 +39,8 @@ def generate_signature(timestamp, method, request_path, body=""):
                    bytes(message, encoding='utf-8'), hashlib.sha256)
     return base64.b64encode(mac.digest()).decode()
 
-def place_order(signal, pair, entry, sl, tp1, tp2, risk, timestamp):
+def place_order(signal, pair, entry, sl, tp1, tp2, risk):
+    timestamp = fetch_okx_server_timestamp()
     symbol = pair.replace("-", "/").upper()
     side = "buy" if signal == "LONG" else "sell"
 
@@ -78,7 +78,6 @@ def webhook():
     data = request.get_json()
     try:
         print("[DEBUG] Incoming Webhook Data:", data)
-        timestamp = fetch_okx_server_timestamp()
         response = place_order(
             data['signal'],
             data['pair'],
@@ -86,8 +85,7 @@ def webhook():
             float(data['sl']),
             float(data['tp1']),
             float(data['tp2']),
-            data['risk'],
-            timestamp
+            data['risk']
         )
         return jsonify({"status": "Order sent", "okx_response": response})
     except Exception as e:
