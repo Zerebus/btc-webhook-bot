@@ -3,30 +3,29 @@ import time
 import hmac
 import hashlib
 import base64
-import json
 import requests
+import json
 from flask import Flask, request, jsonify
 
 app = Flask(__name__)
 
-# Load API keys from environment
+# Load API keys securely from environment
 OKX_API_KEY = os.environ.get("OKX_API_KEY")
 OKX_SECRET_KEY = os.environ.get("OKX_SECRET_KEY")
 OKX_PASSPHRASE = os.environ.get("OKX_PASSPHRASE")
 
 BASE_URL = "https://www.okx.com"
 
-
-def generate_signature(timestamp, method, request_path, body=''):
+# Generate OKX signature
+def generate_signature(timestamp, method, request_path, body=""):
     message = f"{timestamp}{method}{request_path}{body}"
-    mac = hmac.new(OKX_SECRET_KEY.encode(), msg=message.encode(), digestmod=hashlib.sha256)
-    d = mac.digest()
-    return base64.b64encode(d).decode()
+    mac = hmac.new(bytes(OKX_SECRET_KEY, encoding='utf-8'), msg=message.encode('utf-8'), digestmod=hashlib.sha256)
+    return base64.b64encode(mac.digest()).decode()
 
-
+# Build and send order to OKX
 def place_order(signal, pair, entry, sl, tp1, tp2, risk):
-    timestamp = str(int(time.time() * 1000))  # Milliseconds timestamp
-    symbol = pair.replace("-", "").upper()
+    timestamp = str(int(time.time() * 1000))  # Millisecond timestamp
+    symbol = pair.replace("-", "/").upper()
     side = "buy" if signal == "LONG" else "sell"
 
     # Calculate order size
@@ -34,7 +33,7 @@ def place_order(signal, pair, entry, sl, tp1, tp2, risk):
     size = round(notional / entry, 4)
 
     order = {
-        "instId": symbol,
+        "instId": pair,
         "tdMode": "cross",
         "side": side,
         "ordType": "market",
@@ -57,25 +56,35 @@ def place_order(signal, pair, entry, sl, tp1, tp2, risk):
     res = requests.post(url, headers=headers, data=body)
     return res.json()
 
-
 @app.route("/webhook", methods=["POST"])
 def webhook():
     data = request.json
+
+    required_keys = ["signal", "pair", "entry", "sl", "tp1", "tp2", "risk"]
+    if not all(k in data for k in required_keys):
+        return jsonify({"status": "Error", "message": "Missing required fields"}), 400
+
     try:
-        signal = data["signal"]
-        pair = data["pair"]
-        entry = float(data["entry"])
-        sl = float(data["sl"])
-        tp1 = float(data["tp1"])
-        tp2 = float(data["tp2"])
-        risk = data["risk"]
+        entry = float(data['entry'])
+        sl = float(data['sl'])
+        tp1 = float(data['tp1'])
+        tp2 = float(data['tp2'])
+    except ValueError:
+        return jsonify({"status": "Error", "message": "Invalid numeric values"}), 400
 
-        response = place_order(signal, pair, entry, sl, tp1, tp2, risk)
-        return jsonify({"status": "Order sent", "okx_response": response})
-    except Exception as e:
-        return jsonify({"status": "Error", "message": str(e)})
+    okx_response = place_order(
+        signal=data['signal'],
+        pair=data['pair'],
+        entry=entry,
+        sl=sl,
+        tp1=tp1,
+        tp2=tp2,
+        risk=data['risk']
+    )
 
+    return jsonify({"status": "Order sent", "okx_response": okx_response})
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=10000)
+    app.run(debug=True, port=5000)
+
 
