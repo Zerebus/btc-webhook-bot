@@ -1,15 +1,15 @@
 import os
-import time
 import hmac
-import hashlib
-import base64
 import json
+import time
+import base64
+import hashlib
 import requests
 from flask import Flask, request, jsonify
 
 app = Flask(__name__)
 
-# Load API keys securely from environment
+# Load secrets from environment
 OKX_API_KEY = os.environ.get("OKX_API_KEY")
 OKX_SECRET_KEY = os.environ.get("OKX_SECRET_KEY")
 OKX_PASSPHRASE = os.environ.get("OKX_PASSPHRASE")
@@ -21,18 +21,29 @@ HEADERS = {
     "OK-ACCESS-PASSPHRASE": OKX_PASSPHRASE
 }
 
+def get_synced_timestamp():
+    try:
+        res = requests.get("https://worldtimeapi.org/api/timezone/Etc/UTC")
+        if res.status_code == 200:
+            utc_time = res.json()["unixtime"]
+            return str(utc_time * 1000)
+        else:
+            return str(int(time.time() * 1000))
+    except:
+        return str(int(time.time() * 1000))
+
 def generate_signature(timestamp, method, request_path, body=""):
-    message = f'{timestamp}{method}{request_path}{body}'
+    message = f"{timestamp}{method}{request_path}{body}"
     mac = hmac.new(bytes(OKX_SECRET_KEY, encoding='utf-8'),
-                   bytes(message, encoding='utf-8'), digestmod=hashlib.sha256)
+                   bytes(message, encoding='utf-8'), hashlib.sha256)
     d = mac.digest()
-    return base64.b64encode(d).decode("utf-8")
+    return base64.b64encode(d).decode()
 
 def place_order(signal, pair, entry, sl, tp1, tp2, risk):
-    timestamp = str(int(time.time() * 1000))
+    timestamp = get_synced_timestamp()
     symbol = pair.replace("-", "/").upper()
     side = "buy" if signal == "LONG" else "sell"
-
+    
     notional = 376 * float(risk.strip('%')) / 100
     size = round(notional / entry, 4)
 
@@ -58,27 +69,22 @@ def place_order(signal, pair, entry, sl, tp1, tp2, risk):
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
+    data = request.get_json()
     try:
-        data = request.json
-        print("Received data:", data)
-
-        signal = data.get("signal")
-        pair = data.get("pair")
-        entry = float(data.get("entry"))
-        sl = float(data.get("sl"))
-        tp1 = float(data.get("tp1"))
-        tp2 = float(data.get("tp2"))
-        risk = data.get("risk", "1%")
-
-        okx_response = place_order(signal, pair, entry, sl, tp1, tp2, risk)
-        return jsonify({"status": "Order sent", "okx_response": okx_response})
-
+        response = place_order(
+            data['signal'],
+            data['pair'],
+            float(data['entry']),
+            float(data['sl']),
+            float(data['tp1']),
+            float(data['tp2']),
+            data['risk']
+        )
+        return jsonify({"status": "Order sent", "okx_response": response})
     except Exception as e:
-        print("Error:", e)
         return jsonify({"status": "Error", "message": str(e)})
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host="0.0.0.0", port=port)
+    app.run(debug=False, host="0.0.0.0", port=10000)
 
 
