@@ -24,13 +24,14 @@ HEADERS = {
 def fetch_okx_server_timestamp():
     try:
         res = requests.get(f"{BASE_URL}/api/v5/public/time")
-        server_ts = res.json()["data"][0]["ts"]
-        print("✅ Fetched OKX server timestamp:", server_ts)
-        return server_ts
+        server_time = res.json()["data"][0]["ts"]
+        print("[DEBUG] OKX Server Timestamp:", server_time)
+        return server_time
     except Exception as e:
-        fallback_ts = str(int(time.time() * 1000))
-        print("⚠️ Failed to fetch server time, fallback to local:", fallback_ts)
-        return fallback_ts
+        print("[ERROR] Failed to fetch server timestamp:", e)
+        fallback = str(int(time.time() * 1000))
+        print("[DEBUG] Fallback timestamp:", fallback)
+        return fallback
 
 def generate_signature(timestamp, method, request_path, body=""):
     message = f"{timestamp}{method}{request_path}{body}"
@@ -63,17 +64,20 @@ def place_order(signal, pair, entry, sl, tp1, tp2, risk, timestamp):
     })
 
     url = f"{BASE_URL}/api/v5/trade/order"
+    print("[DEBUG] Sending order to OKX:", json.dumps(order, indent=2))
+    print("[DEBUG] Timestamp used:", timestamp)
+    print("[DEBUG] Headers:", HEADERS)
+
     res = requests.post(url, headers=HEADERS, data=body)
+    print("[DEBUG] OKX Raw Response:", res.status_code, res.text)
     return res.json()
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
     data = request.get_json()
     try:
-        print("Incoming Webhook Data:", data)
+        print("[DEBUG] Incoming Webhook Data:", data)
         timestamp = fetch_okx_server_timestamp()
-        print("📤 Using Timestamp in Signature:", timestamp)
-
         response = place_order(
             data['signal'],
             data['pair'],
@@ -84,13 +88,11 @@ def webhook():
             data['risk'],
             timestamp
         )
-        print("✅ OKX Response:", response)
         return jsonify({"status": "Order sent", "okx_response": response})
     except Exception as e:
-        print("❌ Webhook Error:", str(e))
+        print("[ERROR] Webhook Exception:", str(e))
         return jsonify({"status": "Error", "message": str(e)})
 
 if __name__ == "__main__":
     app.run(debug=False, host="0.0.0.0", port=10000)
-
 
