@@ -6,7 +6,6 @@ import base64
 import hashlib
 import requests
 from flask import Flask, request, jsonify
-from datetime import datetime, timezone
 
 app = Flask(__name__)
 
@@ -22,9 +21,8 @@ HEADERS = {
     "OK-ACCESS-PASSPHRASE": OKX_PASSPHRASE
 }
 
-# UTC ISO8601 timestamp in the format OKX expects
 def get_timestamp():
-    return datetime.now(timezone.utc).isoformat(timespec='milliseconds').replace("+00:00", "Z")
+    return str(int(time.time() * 1000))
 
 def generate_signature(timestamp, method, request_path, body=""):
     message = f"{timestamp}{method}{request_path}{body}"
@@ -33,8 +31,12 @@ def generate_signature(timestamp, method, request_path, body=""):
     return base64.b64encode(mac.digest()).decode()
 
 def place_order(signal, pair, entry, sl, tp1, tp2, risk):
+    symbol = pair.replace("-", "/").upper()
     side = "buy" if signal == "LONG" else "sell"
-    notional = 376 * float(risk.strip('%')) / 100
+
+    # Use a safer default minimum risk of 2% and adjust up if needed to meet OKX minimum
+    risk_percent = max(float(risk.strip('%')), 2.0)
+    notional = 376 * risk_percent / 100
     size = round(notional / entry, 4)
 
     order = {
