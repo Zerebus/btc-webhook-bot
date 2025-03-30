@@ -21,7 +21,7 @@ HEADERS = {
     "OK-ACCESS-PASSPHRASE": OKX_PASSPHRASE
 }
 
-def get_timestamp():
+def fetch_okx_server_timestamp():
     try:
         res = requests.get(f"{BASE_URL}/api/v5/public/time")
         return res.json()["data"][0]["ts"]
@@ -35,11 +35,10 @@ def generate_signature(timestamp, method, request_path, body=""):
                    bytes(message, encoding='utf-8'), hashlib.sha256)
     return base64.b64encode(mac.digest()).decode()
 
-def place_order(signal, pair, entry, sl, tp1, tp2, risk):
+def place_order(signal, pair, entry, sl, tp1, tp2, risk, timestamp):
     symbol = pair.replace("-", "/").upper()
     side = "buy" if signal == "LONG" else "sell"
 
-    # Use a safer default minimum risk of 2% and adjust up if needed to meet OKX minimum
     risk_percent = max(float(risk.strip('%')), 2.0)
     notional = 376 * risk_percent / 100
     size = round(notional / entry, 4)
@@ -53,7 +52,6 @@ def place_order(signal, pair, entry, sl, tp1, tp2, risk):
     }
 
     body = json.dumps(order)
-    timestamp = get_timestamp()
     signature = generate_signature(timestamp, "POST", "/api/v5/trade/order", body)
 
     HEADERS.update({
@@ -70,6 +68,7 @@ def webhook():
     data = request.get_json()
     try:
         print("Incoming Webhook Data:", data)
+        timestamp = fetch_okx_server_timestamp()
         response = place_order(
             data['signal'],
             data['pair'],
@@ -77,7 +76,8 @@ def webhook():
             float(data['sl']),
             float(data['tp1']),
             float(data['tp2']),
-            data['risk']
+            data['risk'],
+            timestamp
         )
         print("OKX Response:", response)
         return jsonify({"status": "Order sent", "okx_response": response})
@@ -87,3 +87,4 @@ def webhook():
 
 if __name__ == "__main__":
     app.run(debug=False, host="0.0.0.0", port=10000)
+
