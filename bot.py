@@ -9,27 +9,31 @@ from flask import Flask, request, jsonify
 
 app = Flask(__name__)
 
-# Load API keys from environment variables
+# Load API keys securely from environment variables
 OKX_API_KEY = os.environ.get("OKX_API_KEY")
 OKX_SECRET_KEY = os.environ.get("OKX_SECRET_KEY")
 OKX_PASSPHRASE = os.environ.get("OKX_PASSPHRASE")
 
 BASE_URL = "https://www.okx.com"
 
+# Fetch server time from OKX to fix timestamp issue
+def get_server_timestamp():
+    try:
+        res = requests.get(f"{BASE_URL}/api/v5/public/time")
+        return res.json()["data"][0]["ts"]
+    except Exception as e:
+        print("Failed to get server timestamp:", e)
+        return str(int(time.time() * 1000))
+
 # Generate OKX signature
 def generate_signature(timestamp, method, request_path, body=""):
-    message = f"{timestamp}{method}{request_path}{body}"
-    mac = hmac.new(
-        bytes(OKX_SECRET_KEY, encoding="utf-8"),
-        bytes(message, encoding="utf-8"),
-        digestmod=hashlib.sha256
-    )
-    d = mac.digest()
-    return base64.b64encode(d).decode("utf-8")
+    message = f'{timestamp}{method}{request_path}{body}'
+    mac = hmac.new(bytes(OKX_SECRET_KEY, encoding='utf-8'), msg=message.encode('utf-8'), digestmod=hashlib.sha256)
+    return base64.b64encode(mac.digest()).decode()
 
-# Place order
+# Build and send order to OKX
 def place_order(signal, pair, entry, sl, tp1, tp2, risk):
-    timestamp = str(int(time.time() * 1000))  # milliseconds
+    timestamp = get_server_timestamp()
     symbol = pair.replace("-", "").upper()
     side = "buy" if signal == "LONG" else "sell"
     notional = 376 * float(risk.strip('%')) / 100
@@ -58,27 +62,22 @@ def place_order(signal, pair, entry, sl, tp1, tp2, risk):
     res = requests.post(url, headers=headers, data=body)
     return res.json()
 
-# Webhook endpoint
 @app.route("/webhook", methods=["POST"])
 def webhook():
     data = request.json
+    print("Webhook received:", data)
     try:
-        signal = data["signal"]
-        pair = data["pair"]
-        entry = float(data["entry"])
-        sl = float(data["sl"])
-        tp1 = float(data["tp1"])
-        tp2 = float(data["tp2"])
-        risk = data["risk"]
-
-        res = place_order(signal, pair, entry, sl, tp1, tp2, risk)
-        return jsonify({"status": "Order sent", "okx_response": res})
-
+        okx_res = place_order(
+            signal=data["signal"],
+            pair=data["pair"],
+            entry=float(data["entry"]),
+            sl=float(data["sl"]),
+            tp1=float(data["tp1"]),
+            tp2=float(data["tp2"]),
+            risk=data["risk"]
+        )
+        return jsonify({"status": "Order sent", "okx_response": okx_res})
     except Exception as e:
-        return jsonify({"status": "Error", "message": str(e)})
-
-# Required for Render deployment
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+        return jsonify({"status": "Error", "message": str(e)}), 500
 
 
