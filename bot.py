@@ -24,10 +24,13 @@ HEADERS = {
 def fetch_okx_server_timestamp():
     try:
         res = requests.get(f"{BASE_URL}/api/v5/public/time")
-        return res.json()["data"][0]["ts"]
+        server_ts = res.json()["data"][0]["ts"]
+        print("✅ Fetched OKX server timestamp:", server_ts)
+        return server_ts
     except Exception as e:
-        print("Failed to fetch server timestamp:", e)
-        return str(int(time.time() * 1000))
+        fallback_ts = str(int(time.time() * 1000))
+        print("⚠️ Failed to fetch server time, fallback to local:", fallback_ts)
+        return fallback_ts
 
 def generate_signature(timestamp, method, request_path, body=""):
     message = f"{timestamp}{method}{request_path}{body}"
@@ -69,6 +72,8 @@ def webhook():
     try:
         print("Incoming Webhook Data:", data)
         timestamp = fetch_okx_server_timestamp()
+        print("📤 Using Timestamp in Signature:", timestamp)
+
         response = place_order(
             data['signal'],
             data['pair'],
@@ -79,12 +84,13 @@ def webhook():
             data['risk'],
             timestamp
         )
-        print("OKX Response:", response)
+        print("✅ OKX Response:", response)
         return jsonify({"status": "Order sent", "okx_response": response})
     except Exception as e:
-        print("Webhook Error:", str(e))
+        print("❌ Webhook Error:", str(e))
         return jsonify({"status": "Error", "message": str(e)})
 
 if __name__ == "__main__":
     app.run(debug=False, host="0.0.0.0", port=10000)
+
 
