@@ -6,6 +6,7 @@ import base64
 import hashlib
 import requests
 from flask import Flask, request, jsonify
+from datetime import datetime, timezone
 
 app = Flask(__name__)
 
@@ -21,8 +22,9 @@ HEADERS = {
     "OK-ACCESS-PASSPHRASE": OKX_PASSPHRASE
 }
 
+# UTC ISO8601 timestamp in the format OKX expects
 def get_timestamp():
-    return str(int(time.time() * 1000))
+    return datetime.now(timezone.utc).isoformat(timespec='milliseconds').replace("+00:00", "Z")
 
 def generate_signature(timestamp, method, request_path, body=""):
     message = f"{timestamp}{method}{request_path}{body}"
@@ -31,7 +33,6 @@ def generate_signature(timestamp, method, request_path, body=""):
     return base64.b64encode(mac.digest()).decode()
 
 def place_order(signal, pair, entry, sl, tp1, tp2, risk):
-    symbol = pair.replace("-", "/").upper()
     side = "buy" if signal == "LONG" else "sell"
     notional = 376 * float(risk.strip('%')) / 100
     size = round(notional / entry, 4)
@@ -76,4 +77,3 @@ def webhook():
 
 if __name__ == "__main__":
     app.run(debug=False, host="0.0.0.0", port=10000)
-
