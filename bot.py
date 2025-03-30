@@ -9,33 +9,31 @@ from flask import Flask, request, jsonify
 
 app = Flask(__name__)
 
-# Load API keys securely from environment variables
+# Load API keys from environment variables
 OKX_API_KEY = os.environ.get("OKX_API_KEY")
 OKX_SECRET_KEY = os.environ.get("OKX_SECRET_KEY")
 OKX_PASSPHRASE = os.environ.get("OKX_PASSPHRASE")
 
 BASE_URL = "https://www.okx.com"
 
-# Fetch server time from OKX to fix timestamp issue
-def get_server_timestamp():
-    try:
-        res = requests.get(f"{BASE_URL}/api/v5/public/time")
-        return res.json()["data"][0]["ts"]
-    except Exception as e:
-        print("Failed to get server timestamp:", e)
-        return str(int(time.time() * 1000))
+HEADERS = {
+    "Content-Type": "application/json",
+    "OK-ACCESS-KEY": OKX_API_KEY,
+    "OK-ACCESS-PASSPHRASE": OKX_PASSPHRASE
+}
 
-# Generate OKX signature
 def generate_signature(timestamp, method, request_path, body=""):
-    message = f'{timestamp}{method}{request_path}{body}'
+    message = f"{timestamp}{method}{request_path}{body}"
     mac = hmac.new(bytes(OKX_SECRET_KEY, encoding='utf-8'), msg=message.encode('utf-8'), digestmod=hashlib.sha256)
-    return base64.b64encode(mac.digest()).decode()
+    d = mac.digest()
+    return base64.b64encode(d).decode("utf-8")
 
-# Build and send order to OKX
 def place_order(signal, pair, entry, sl, tp1, tp2, risk):
-    timestamp = get_server_timestamp()
+    timestamp = str(int(time.time()))  # UNIX timestamp in seconds as required by OKX
     symbol = pair.replace("-", "").upper()
     side = "buy" if signal == "LONG" else "sell"
+
+    # Calculate order size based on risk and balance
     notional = 376 * float(risk.strip('%')) / 100
     size = round(notional / entry, 4)
 
@@ -50,34 +48,41 @@ def place_order(signal, pair, entry, sl, tp1, tp2, risk):
     body = json.dumps(order)
     signature = generate_signature(timestamp, "POST", "/api/v5/trade/order", body)
 
-    headers = {
-        "Content-Type": "application/json",
-        "OK-ACCESS-KEY": OKX_API_KEY,
+    HEADERS.update({
         "OK-ACCESS-SIGN": signature,
-        "OK-ACCESS-TIMESTAMP": timestamp,
-        "OK-ACCESS-PASSPHRASE": OKX_PASSPHRASE
-    }
+        "OK-ACCESS-TIMESTAMP": timestamp
+    })
 
     url = f"{BASE_URL}/api/v5/trade/order"
-    res = requests.post(url, headers=headers, data=body)
+    res = requests.post(url, headers=HEADERS, data=body)
     return res.json()
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
-    data = request.json
-    print("Webhook received:", data)
     try:
-        okx_res = place_order(
-            signal=data["signal"],
-            pair=data["pair"],
-            entry=float(data["entry"]),
-            sl=float(data["sl"]),
-            tp1=float(data["tp1"]),
-            tp2=float(data["tp2"]),
-            risk=data["risk"]
-        )
-        return jsonify({"status": "Order sent", "okx_response": okx_res})
+        data = request.get_json()
+
+        if not data:
+            return jsonify({"status": "Error", "message": "Invalid JSON"}), 400
+
+        signal = data.get("signal")
+        pair = data.get("pair")
+        entry = float(data.get("entry"))
+        sl = float(data.get("sl"))
+        tp1 = float(data.get("tp1"))
+        tp2 = float(data.get("tp2"))
+        risk = data.get("risk")
+
+        print("Received order:", data)
+
+        okx_response = place_order(signal, pair, entry, sl, tp1, tp2, risk)
+        return jsonify({"okx_response": okx_response, "status": "Order sent"})
+
     except Exception as e:
-        return jsonify({"status": "Error", "message": str(e)}), 500
+        return jsonify({"status": "Error", "message": str(e)})
+
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 5000))  # For Render compatibility
+    app.run(host="0.0.0.0", port=port)
 
 
