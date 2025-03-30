@@ -3,39 +3,39 @@ import time
 import hmac
 import hashlib
 import base64
-import json
 import requests
+import json
 from flask import Flask, request, jsonify
 
 app = Flask(__name__)
 
-# Load API keys securely from environment
+# Load API keys from environment
 OKX_API_KEY = os.environ.get("OKX_API_KEY")
 OKX_SECRET_KEY = os.environ.get("OKX_SECRET_KEY")
 OKX_PASSPHRASE = os.environ.get("OKX_PASSPHRASE")
 
 BASE_URL = "https://www.okx.com"
+
 HEADERS = {
     "Content-Type": "application/json",
     "OK-ACCESS-KEY": OKX_API_KEY,
     "OK-ACCESS-PASSPHRASE": OKX_PASSPHRASE,
 }
 
-# Generate OKX signature
+# Generate signature
 def generate_signature(timestamp, method, request_path, body=""):
     message = f"{timestamp}{method}{request_path}{body}"
-    mac = hmac.new(bytes(OKX_SECRET_KEY, encoding='utf-8'), msg=message.encode('utf-8'), digestmod=hashlib.sha256)
-    d = mac.digest()
-    return base64.b64encode(d).decode("utf-8")
+    mac = hmac.new(bytes(OKX_SECRET_KEY, encoding="utf8"), msg=message.encode("utf-8"), digestmod=hashlib.sha256)
+    return base64.b64encode(mac.digest()).decode("utf-8")
 
-# Build and send order to OKX
+# Place order
 def place_order(signal, pair, entry, sl, tp1, tp2, risk):
     timestamp = str(time.time())
     symbol = pair.replace("-", "").upper()
     side = "buy" if signal == "LONG" else "sell"
 
-    # Calculate quantity using fixed leverage and risk
-    notional = 376 * float(risk.strip('%')) / 100  # example fixed capital = 376 USDT
+    # Calculate size based on 376 USDT capital
+    notional = 376 * float(risk.strip("%")) / 100
     size = round(notional / entry, 4)
 
     order = {
@@ -58,20 +58,27 @@ def place_order(signal, pair, entry, sl, tp1, tp2, risk):
     res = requests.post(url, headers=HEADERS, data=body)
     return res.json()
 
+# Webhook endpoint
 @app.route("/webhook", methods=["POST"])
 def webhook():
     data = request.get_json()
-    if not data:
-        return jsonify({"message": "No JSON received", "status": "Error"}), 400
 
-    signal = data.get("signal")
-    pair = data.get("pair")
-    entry = float(data.get("entry"))
-    sl = float(data.get("sl"))
-    tp1 = float(data.get("tp1"))
-    tp2 = float(data.get("tp2"))
-    risk = data.get("risk")
+    try:
+        signal = data["signal"]
+        pair = data["pair"]
+        entry = float(data["entry"])
+        sl = float(data["sl"])
+        tp1 = float(data["tp1"])
+        tp2 = float(data["tp2"])
+        risk = data["risk"]
 
-    response = place_order(signal, pair, entry, sl, tp1, tp2, risk)
-    return jsonify({"data": data, "status": "Received", "okx_response": response})
+        response = place_order(signal, pair, entry, sl, tp1, tp2, risk)
+        return jsonify({"status": "Order sent", "okx_response": response})
+    except Exception as e:
+        return jsonify({"status": "Error", "message": str(e)})
+
+# Run the Flask app properly on Render
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+
 
