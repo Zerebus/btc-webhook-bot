@@ -26,14 +26,10 @@ HEADERS = {
 def fetch_okx_server_timestamp():
     try:
         res = requests.get(f"{BASE_URL}/api/v5/public/time")
-        server_time = res.json()["data"][0]["ts"]
-        # OKX returns timestamp in milliseconds. Convert to seconds and keep 3 decimals
-        formatted_timestamp = str(int(server_time) / 1000)
-        print("[DEBUG] OKX Server Timestamp (seconds):", formatted_timestamp)
-        return formatted_timestamp
+        return res.json()["data"][0]["ts"]
     except Exception as e:
-        print("[ERROR] Failed to fetch timestamp:", e)
-        return str(time.time())
+        print("[ERROR] Failed to fetch server timestamp:", e)
+        return str(int(time.time() * 1000))
 
 def generate_signature(timestamp, method, request_path, body=""):
     message = f"{timestamp}{method}{request_path}{body}"
@@ -63,14 +59,17 @@ def get_usdt_balance():
         print("[ERROR] Failed to fetch balance:", e)
     return 1000.0  # fallback default balance
 
-def place_order(signal, pair, entry, sl, tp1, tp2, risk):
+def place_order(signal, pair, entry, sl, tp1, tp2, risk=None):
     timestamp = fetch_okx_server_timestamp()
     symbol = pair.replace("-", "/").upper()
     side = "buy" if signal == "LONG" else "sell"
 
-    risk_percent = max(float(risk.strip('%')), 2.0)
+    risk_percent = float(risk.strip('%')) if risk else 3.5
     usdt_balance = get_usdt_balance()
     notional = usdt_balance * risk_percent / 100
+    if notional < 10:
+        print("[WARNING] Notional too low, adjusting to minimum $10")
+        notional = 10
     size = round(notional / entry, 4)
 
     order = {
@@ -110,7 +109,7 @@ def webhook():
             float(data['sl']),
             float(data['tp1']),
             float(data['tp2']),
-            data['risk']
+            data.get('risk', "3.5%")
         )
         return jsonify({"status": "Order sent", "okx_response": response})
     except Exception as e:
