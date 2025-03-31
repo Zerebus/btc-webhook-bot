@@ -24,12 +24,13 @@ HEADERS = {
 def fetch_okx_server_timestamp():
     try:
         res = requests.get(f"{BASE_URL}/api/v5/public/time")
-        server_time = res.json()["data"][0]["ts"]
-        print("[DEBUG] OKX Server Timestamp:", server_time)
-        return server_time
+        ms = int(res.json()["data"][0]["ts"])
+        iso_timestamp = time.strftime('%Y-%m-%dT%H:%M:%S', time.gmtime(ms / 1000)) + f".{ms % 1000:03d}Z"
+        print("[DEBUG] OKX ISO Timestamp:", iso_timestamp)
+        return iso_timestamp
     except Exception as e:
         print("[ERROR] Failed to fetch server timestamp:", e)
-        fallback = str(int(time.time() * 1000))
+        fallback = time.strftime('%Y-%m-%dT%H:%M:%S', time.gmtime()) + ".000Z"
         print("[DEBUG] Fallback timestamp:", fallback)
         return fallback
 
@@ -117,4 +118,5 @@ def webhook():
 
 if __name__ == "__main__":
     app.run(debug=False, host="0.0.0.0", port=10000)
+
 
