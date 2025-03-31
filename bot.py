@@ -1,6 +1,6 @@
 from flask import Flask, request, jsonify
 import requests
-import time
+import datetime
 import hmac
 import hashlib
 import json
@@ -14,7 +14,7 @@ PASSPHRASE = os.getenv("OKX_PASSPHRASE")
 BASE_URL = "https://www.okx.com"
 
 def get_timestamp():
-    return str(int(time.time() * 1000))
+    return datetime.datetime.utcnow().isoformat("T", "milliseconds") + "Z"
 
 def generate_signature(timestamp, method, path, body):
     prehash = f"{timestamp}{method.upper()}{path}{body}"
@@ -70,7 +70,7 @@ def webhook():
 
 @app.route("/", methods=["GET"])
 def home():
-    return "Webhook Bot is live on Render!"
+    return "Webhook Bot is live!"
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=10000)
+    app.run(host="0.0.0.0", port=3000)
