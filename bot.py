@@ -1,10 +1,12 @@
 from flask import Flask, request, jsonify
 import requests
-import datetime
+import time
 import hmac
 import hashlib
 import json
 import os
+import datetime
+import base64
 
 app = Flask(__name__)
 
@@ -18,9 +20,10 @@ def get_timestamp():
 
 def generate_signature(timestamp, method, path, body):
     prehash = f"{timestamp}{method.upper()}{path}{body}"
-    return hmac.new(SECRET_KEY.encode(), prehash.encode(), hashlib.sha256).hexdigest()
+    signature = hmac.new(SECRET_KEY.encode(), prehash.encode(), hashlib.sha256).digest()
+    return base64.b64encode(signature).decode()
 
-def place_order(signal, pair, sl_pct, tp1_pct, tp2_pct, risk):
+def place_order(signal, pair, sl_pct, tp1_pct, tp2_pct, risk, test=False):
     timestamp = get_timestamp()
     path = "/api/v5/trade/order"
     method = "POST"
@@ -48,6 +51,11 @@ def place_order(signal, pair, sl_pct, tp1_pct, tp2_pct, risk):
         "Content-Type": "application/json"
     }
 
+    if test:
+        print("DEBUG BODY:", body_json)
+        print("DEBUG HEADERS:", headers)
+        return {"debug": True, "body": body, "headers": headers}
+
     response = requests.post(f"{BASE_URL}{path}", headers=headers, data=body_json)
     return response.json()
 
@@ -61,8 +69,9 @@ def webhook():
         tp1_pct = float(data["tp1_pct"])
         tp2_pct = float(data["tp2_pct"])
         risk = data["risk"]
+        test = data.get("test", False)
 
-        result = place_order(signal, pair, sl_pct, tp1_pct, tp2_pct, risk)
+        result = place_order(signal, pair, sl_pct, tp1_pct, tp2_pct, risk, test)
         return jsonify({"status": "order sent", "okx_response": result})
 
     except Exception as e:
@@ -74,3 +83,4 @@ def home():
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=3000)
+
