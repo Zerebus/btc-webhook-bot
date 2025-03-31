@@ -173,6 +173,7 @@ def place_order(signal, pair, entry, sl, tp1, tp2, risk, test=False):
         "OK-ACCESS-TIMESTAMP": timestamp
     })
     response = requests.post(f"{BASE_URL}{path}", headers=headers, data=body)
+    print('🔁 OKX Response:', response.text)
 
     try:
         tp1_size = round(size * 0.5, 6)
