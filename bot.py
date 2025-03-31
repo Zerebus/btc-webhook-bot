@@ -1,4 +1,3 @@
-
 import os
 import hmac
 import json
@@ -48,13 +47,11 @@ def generate_signature(timestamp, method, request_path, body=""):
 def get_usdt_balance():
     timestamp = fetch_okx_server_timestamp()
     signature = generate_signature(timestamp, "GET", "/api/v5/account/balance")
-
     headers = HEADERS.copy()
     headers.update({
         "OK-ACCESS-SIGN": signature,
         "OK-ACCESS-TIMESTAMP": timestamp
     })
-
     try:
         res = requests.get(f"{BASE_URL}/api/v5/account/balance", headers=headers)
         balances = res.json()["data"][0]["details"]
@@ -89,20 +86,14 @@ def set_leverage(pair, leverage, mode="cross"):
     method = "POST"
     path = "/api/v5/account/set-leverage"
     leverage = min(int(leverage), 5)
-    payload = {
-        "instId": pair,
-        "lever": str(leverage),
-        "mgnMode": mode
-    }
+    payload = {"instId": pair, "lever": str(leverage), "mgnMode": mode}
     body = json.dumps(payload)
     sig = generate_signature(timestamp, method, path, body)
-
     headers = HEADERS.copy()
     headers.update({
         "OK-ACCESS-SIGN": sig,
         "OK-ACCESS-TIMESTAMP": timestamp
     })
-
     try:
         requests.post(f"{BASE_URL}{path}", headers=headers, data=body)
     except:
@@ -115,12 +106,10 @@ def monitor_trailing_stop(pair, entry_price, size, side):
         price = get_latest_price(pair)
         if side == "buy":
             if price > peak: peak = price
-            if price <= peak * (1 - TRAIL_PERCENT / 100):
-                break
+            if price <= peak * (1 - TRAIL_PERCENT / 100): break
         else:
             if price < peak: peak = price
-            if price >= peak * (1 + TRAIL_PERCENT / 100):
-                break
+            if price >= peak * (1 + TRAIL_PERCENT / 100): break
     timestamp = fetch_okx_server_timestamp()
     method = "POST"
     path = "/api/v5/trade/order"
@@ -142,10 +131,7 @@ def monitor_trailing_stop(pair, entry_price, size, side):
 
 def place_order(signal, pair, entry, sl, tp1, tp2, risk):
     global daily_loss
-    if not is_market_volatile_enough(pair):
-        return {"status": "blocked", "reason": "low volatility"}
-    if daily_loss > DAILY_LOSS_LIMIT:
-        return {"status": "blocked", "reason": "daily loss limit"}
+
     if not is_market_volatile_enough(pair):
         return {"status": "blocked", "reason": "low volatility"}
     if daily_loss > DAILY_LOSS_LIMIT:
@@ -218,7 +204,6 @@ def place_order(signal, pair, entry, sl, tp1, tp2, risk):
     pnl = (mock_exit_price - entry) if side == "buy" else (entry - mock_exit_price)
     pnl_percent = (pnl / entry) * 100
     if pnl_percent < 0:
-        global daily_loss
         daily_loss += abs(pnl_percent)
         cooldown_until[pair] = datetime.utcnow() + timedelta(minutes=COOLDOWN_MINUTES)
     open_trades[pair] = False
