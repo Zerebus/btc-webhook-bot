@@ -4,12 +4,13 @@ import time
 import hmac
 import hashlib
 import json
+import os
 
 app = Flask(__name__)
 
-API_KEY = "your_okx_api_key"
-API_SECRET = "your_okx_api_secret"
-PASSPHRASE = "your_okx_passphrase"
+API_KEY = os.getenv("OKX_API_KEY")
+API_SECRET = os.getenv("OKX_API_SECRET")
+PASSPHRASE = os.getenv("OKX_PASSPHRASE")
 BASE_URL = "https://www.okx.com"
 
 @app.route("/")
@@ -21,16 +22,13 @@ def get_timestamp():
 
 def sign(timestamp, method, request_path, body=""):
     message = f"{timestamp}{method}{request_path}{body}"
-    return hmac.new(
-        API_SECRET.encode(), message.encode(), hashlib.sha256
-    ).hexdigest()
+    return hmac.new(API_SECRET.encode(), message.encode(), hashlib.sha256).hexdigest()
 
 def get_latest_price(pair):
     response = requests.get(f"{BASE_URL}/api/v5/market/ticker?instId={pair}")
     return float(response.json()["data"][0]["last"])
 
 def place_order(signal, pair, entry, sl, tp1, tp2, risk, test=False):
-    # Simulate or fetch user balance (this should use OKX API in real setup)
     balance = 376.63
     risk_percent = float(risk.strip('%'))
     notional = max(5, balance * risk_percent / 100)
@@ -65,17 +63,11 @@ def place_order(signal, pair, entry, sl, tp1, tp2, risk, test=False):
             if not is_market_volatile_enough(pair):
                 return {"status": "blocked", "reason": "low volatility"}
 
-        if hasattr(response, 'json'):
-            okx_response = response.json()
-            raw_text = response.text
-        else:
-            okx_response = response
-            raw_text = str(response)
-
+        okx_response = response.json() if hasattr(response, 'json') else response
         return jsonify({
             "status": "Order sent",
             "okx_response": okx_response,
-            "raw_text": raw_text
+            "raw_text": response.text
         })
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)})
