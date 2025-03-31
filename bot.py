@@ -26,10 +26,18 @@ HEADERS = {
 def fetch_okx_server_timestamp():
     try:
         res = requests.get(f"{BASE_URL}/api/v5/public/time")
-        return res.json()["data"][0]["ts"]
+        server_ts = int(res.json()["data"][0]["ts"])
+        local_ts = int(time.time() * 1000)
+        diff = local_ts - server_ts
+        iso_timestamp = datetime.utcfromtimestamp(server_ts / 1000).strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3] + 'Z'
+        print(f"[DEBUG] OKX Server Timestamp: {server_ts} ({iso_timestamp})")
+        print(f"[DEBUG] Local Timestamp: {local_ts} — Difference: {diff} ms")
+        return iso_timestamp
     except Exception as e:
-        print("[ERROR] Failed to fetch server timestamp:", e)
-        return str(int(time.time() * 1000))
+        print("[ERROR] Failed to fetch OKX server time:", e)
+        fallback = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3] + 'Z'
+        print("[DEBUG] Using fallback ISO timestamp:", fallback)
+        return fallback
 
 def generate_signature(timestamp, method, request_path, body=""):
     message = f"{timestamp}{method}{request_path}{body}"
@@ -59,18 +67,19 @@ def get_usdt_balance():
         print("[ERROR] Failed to fetch balance:", e)
     return 1000.0  # fallback default balance
 
-def place_order(signal, pair, entry, sl, tp1, tp2, risk=None):
+def place_order(signal, pair, entry, sl, tp1, tp2, risk):
     timestamp = fetch_okx_server_timestamp()
     symbol = pair.replace("-", "/").upper()
     side = "buy" if signal == "LONG" else "sell"
 
-    risk_percent = float(risk.strip('%')) if risk else 3.5
+    risk_percent = max(float(risk.strip('%')), 3.5)
     usdt_balance = get_usdt_balance()
     notional = usdt_balance * risk_percent / 100
-    if notional < 10:
-        print("[WARNING] Notional too low, adjusting to minimum $10")
-        notional = 10
     size = round(notional / entry, 4)
+
+    if notional < 10:
+        print(f"[WARNING] Notional too low (${notional:.2f}). Skipping order.")
+        return {"reason": "Notional too low", "notional": notional, "status": "Rejected"}
 
     order = {
         "instId": pair,
@@ -83,7 +92,8 @@ def place_order(signal, pair, entry, sl, tp1, tp2, risk=None):
     body = json.dumps(order)
     signature = generate_signature(timestamp, "POST", "/api/v5/trade/order", body)
 
-    HEADERS.update({
+    headers = HEADERS.copy()
+    headers.update({
         "OK-ACCESS-SIGN": signature,
         "OK-ACCESS-TIMESTAMP": timestamp
     })
@@ -91,9 +101,9 @@ def place_order(signal, pair, entry, sl, tp1, tp2, risk=None):
     url = f"{BASE_URL}/api/v5/trade/order"
     print("[DEBUG] Sending order to OKX:", json.dumps(order, indent=2))
     print("[DEBUG] Timestamp used:", timestamp)
-    print("[DEBUG] Headers:", HEADERS)
+    print("[DEBUG] Headers:", headers)
 
-    res = requests.post(url, headers=HEADERS, data=body)
+    res = requests.post(url, headers=headers, data=body)
     print("[DEBUG] OKX Raw Response:", res.status_code, res.text)
     return res.json()
 
@@ -109,7 +119,7 @@ def webhook():
             float(data['sl']),
             float(data['tp1']),
             float(data['tp2']),
-            data.get('risk', "3.5%")
+            data['risk']
         )
         return jsonify({"status": "Order sent", "okx_response": response})
     except Exception as e:
