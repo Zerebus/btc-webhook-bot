@@ -32,17 +32,6 @@ TRAIL_PERCENT = 1.5
 
 def fetch_okx_server_timestamp():
     try:
-        # Support SL/TP % based dynamic entry
-        if 'sl_pct' in data and 'tp1_pct' in data and 'tp2_pct' in data:
-            entry = get_latest_price(data['pair'])
-            sl = entry * (1 - float(data['sl_pct']) / 100) if data['signal'].upper() == 'LONG' else entry * (1 + float(data['sl_pct']) / 100)
-            tp1 = entry * (1 + float(data['tp1_pct']) / 100) if data['signal'].upper() == 'LONG' else entry * (1 - float(data['tp1_pct']) / 100)
-            tp2 = entry * (1 + float(data['tp2_pct']) / 100) if data['signal'].upper() == 'LONG' else entry * (1 - float(data['tp2_pct']) / 100)
-        else:
-            entry = float(data['entry'])
-            sl = float(data['sl'])
-            tp1 = float(data['tp1'])
-            tp2 = float(data['tp2'])
         res = requests.get(f"{BASE_URL}/api/v5/public/time")
         return str(float(res.json()["data"][0]["ts"]) / 1000)
     except:
@@ -64,17 +53,6 @@ def get_usdt_balance():
         "OK-ACCESS-TIMESTAMP": timestamp
     })
     try:
-        # Support SL/TP % based dynamic entry
-        if 'sl_pct' in data and 'tp1_pct' in data and 'tp2_pct' in data:
-            entry = get_latest_price(data['pair'])
-            sl = entry * (1 - float(data['sl_pct']) / 100) if data['signal'].upper() == 'LONG' else entry * (1 + float(data['sl_pct']) / 100)
-            tp1 = entry * (1 + float(data['tp1_pct']) / 100) if data['signal'].upper() == 'LONG' else entry * (1 - float(data['tp1_pct']) / 100)
-            tp2 = entry * (1 + float(data['tp2_pct']) / 100) if data['signal'].upper() == 'LONG' else entry * (1 - float(data['tp2_pct']) / 100)
-        else:
-            entry = float(data['entry'])
-            sl = float(data['sl'])
-            tp1 = float(data['tp1'])
-            tp2 = float(data['tp2'])
         res = requests.get(f"{BASE_URL}/api/v5/account/balance", headers=headers)
         balances = res.json()["data"][0]["details"]
         for asset in balances:
@@ -86,17 +64,6 @@ def get_usdt_balance():
 
 def get_latest_price(instId="BTC-USDT"):
     try:
-        # Support SL/TP % based dynamic entry
-        if 'sl_pct' in data and 'tp1_pct' in data and 'tp2_pct' in data:
-            entry = get_latest_price(data['pair'])
-            sl = entry * (1 - float(data['sl_pct']) / 100) if data['signal'].upper() == 'LONG' else entry * (1 + float(data['sl_pct']) / 100)
-            tp1 = entry * (1 + float(data['tp1_pct']) / 100) if data['signal'].upper() == 'LONG' else entry * (1 - float(data['tp1_pct']) / 100)
-            tp2 = entry * (1 + float(data['tp2_pct']) / 100) if data['signal'].upper() == 'LONG' else entry * (1 - float(data['tp2_pct']) / 100)
-        else:
-            entry = float(data['entry'])
-            sl = float(data['sl'])
-            tp1 = float(data['tp1'])
-            tp2 = float(data['tp2'])
         res = requests.get(f"{BASE_URL}/api/v5/market/ticker?instId={instId}")
         return float(res.json()["data"][0]["last"])
     except:
@@ -104,17 +71,6 @@ def get_latest_price(instId="BTC-USDT"):
 
 def is_market_volatile_enough(pair, threshold=0.75, lookback=10):
     try:
-        # Support SL/TP % based dynamic entry
-        if 'sl_pct' in data and 'tp1_pct' in data and 'tp2_pct' in data:
-            entry = get_latest_price(data['pair'])
-            sl = entry * (1 - float(data['sl_pct']) / 100) if data['signal'].upper() == 'LONG' else entry * (1 + float(data['sl_pct']) / 100)
-            tp1 = entry * (1 + float(data['tp1_pct']) / 100) if data['signal'].upper() == 'LONG' else entry * (1 - float(data['tp1_pct']) / 100)
-            tp2 = entry * (1 + float(data['tp2_pct']) / 100) if data['signal'].upper() == 'LONG' else entry * (1 - float(data['tp2_pct']) / 100)
-        else:
-            entry = float(data['entry'])
-            sl = float(data['sl'])
-            tp1 = float(data['tp1'])
-            tp2 = float(data['tp2'])
         url = f"{BASE_URL}/api/v5/market/candles?instId={pair}&bar=15m&limit={lookback}"
         res = requests.get(url)
         candles = res.json()["data"]
@@ -139,17 +95,6 @@ def set_leverage(pair, leverage, mode="cross"):
         "OK-ACCESS-TIMESTAMP": timestamp
     })
     try:
-        # Support SL/TP % based dynamic entry
-        if 'sl_pct' in data and 'tp1_pct' in data and 'tp2_pct' in data:
-            entry = get_latest_price(data['pair'])
-            sl = entry * (1 - float(data['sl_pct']) / 100) if data['signal'].upper() == 'LONG' else entry * (1 + float(data['sl_pct']) / 100)
-            tp1 = entry * (1 + float(data['tp1_pct']) / 100) if data['signal'].upper() == 'LONG' else entry * (1 - float(data['tp1_pct']) / 100)
-            tp2 = entry * (1 + float(data['tp2_pct']) / 100) if data['signal'].upper() == 'LONG' else entry * (1 - float(data['tp2_pct']) / 100)
-        else:
-            entry = float(data['entry'])
-            sl = float(data['sl'])
-            tp1 = float(data['tp1'])
-            tp2 = float(data['tp2'])
         requests.post(f"{BASE_URL}{path}", headers=headers, data=body)
     except:
         pass
@@ -227,17 +172,6 @@ def place_order(signal, pair, entry, sl, tp1, tp2, risk):
     response = requests.post(f"{BASE_URL}{path}", headers=headers, data=body)
 
     try:
-        # Support SL/TP % based dynamic entry
-        if 'sl_pct' in data and 'tp1_pct' in data and 'tp2_pct' in data:
-            entry = get_latest_price(data['pair'])
-            sl = entry * (1 - float(data['sl_pct']) / 100) if data['signal'].upper() == 'LONG' else entry * (1 + float(data['sl_pct']) / 100)
-            tp1 = entry * (1 + float(data['tp1_pct']) / 100) if data['signal'].upper() == 'LONG' else entry * (1 - float(data['tp1_pct']) / 100)
-            tp2 = entry * (1 + float(data['tp2_pct']) / 100) if data['signal'].upper() == 'LONG' else entry * (1 - float(data['tp2_pct']) / 100)
-        else:
-            entry = float(data['entry'])
-            sl = float(data['sl'])
-            tp1 = float(data['tp1'])
-            tp2 = float(data['tp2'])
         tp1_size = round(size * 0.5, 6)
         tp2_size = round(size * 0.5, 6)
         common = {
@@ -279,37 +213,25 @@ def place_order(signal, pair, entry, sl, tp1, tp2, risk):
 def webhook():
     data = request.get_json()
     try:
-        # Support SL/TP % based dynamic entry
+        pair = data['pair']
+        signal = data['signal']
+        risk = data['risk']
+
+        # Support dynamic SL/TP via percentage
         if 'sl_pct' in data and 'tp1_pct' in data and 'tp2_pct' in data:
-            entry = get_latest_price(data['pair'])
-            sl = entry * (1 - float(data['sl_pct']) / 100) if data['signal'].upper() == 'LONG' else entry * (1 + float(data['sl_pct']) / 100)
-            tp1 = entry * (1 + float(data['tp1_pct']) / 100) if data['signal'].upper() == 'LONG' else entry * (1 - float(data['tp1_pct']) / 100)
-            tp2 = entry * (1 + float(data['tp2_pct']) / 100) if data['signal'].upper() == 'LONG' else entry * (1 - float(data['tp2_pct']) / 100)
+            entry = get_latest_price(pair)
+            sl = entry * (1 - float(data['sl_pct']) / 100) if signal.upper() == 'LONG' else entry * (1 + float(data['sl_pct']) / 100)
+            tp1 = entry * (1 + float(data['tp1_pct']) / 100) if signal.upper() == 'LONG' else entry * (1 - float(data['tp1_pct']) / 100)
+            tp2 = entry * (1 + float(data['tp2_pct']) / 100) if signal.upper() == 'LONG' else entry * (1 - float(data['tp2_pct']) / 100)
         else:
             entry = float(data['entry'])
             sl = float(data['sl'])
             tp1 = float(data['tp1'])
             tp2 = float(data['tp2'])
 
-    if "sl_pct" in data and "tp1_pct" in data and "tp2_pct" in data:
-        entry = get_latest_price(pair)
-        sl = entry * (1 - float(data['sl_pct']) / 100) if signal.upper() == "LONG" else entry * (1 + float(data['sl_pct']) / 100)
-        tp1 = entry * (1 + float(data['tp1_pct']) / 100) if signal.upper() == "LONG" else entry * (1 - float(data['tp1_pct']) / 100)
-        tp2 = entry * (1 + float(data['tp2_pct']) / 100) if signal.upper() == "LONG" else entry * (1 - float(data['tp2_pct']) / 100)
-    else:
-        entry = float(data['entry'])
-        sl = float(data['sl'])
-        tp1 = float(data['tp1'])
-        tp2 = float(data['tp2'])
-
-        response = place_order(
-            data['signal'], data['pair'], float(data['entry']),
-            float(data['sl']), float(data['tp1']), float(data['tp2']),
-            data['risk']
-        )
+        response = place_order(signal, pair, entry, sl, tp1, tp2, risk)
         return jsonify({"status": "Order sent", "okx_response": response})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)})
-
 if __name__ == "__main__":
     app.run(debug=False, host="0.0.0.0", port=10000)
