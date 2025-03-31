@@ -6,6 +6,7 @@ import base64
 import hashlib
 import requests
 from flask import Flask, request, jsonify
+from datetime import datetime
 
 app = Flask(__name__)
 
@@ -25,12 +26,13 @@ def fetch_okx_server_timestamp():
     try:
         res = requests.get(f"{BASE_URL}/api/v5/public/time")
         server_time = res.json()["data"][0]["ts"]
-        print("[DEBUG] OKX Server Timestamp:", server_time)
-        return server_time
+        iso_timestamp = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3] + 'Z'
+        print("[DEBUG] OKX Server ISO Timestamp:", iso_timestamp)
+        return iso_timestamp
     except Exception as e:
         print("[ERROR] Failed to fetch server timestamp:", e)
-        fallback = str(int(time.time() * 1000))
-        print("[DEBUG] Fallback timestamp:", fallback)
+        fallback = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3] + 'Z'
+        print("[DEBUG] Fallback ISO Timestamp:", fallback)
         return fallback
 
 def generate_signature(timestamp, method, request_path, body=""):
@@ -82,20 +84,18 @@ def place_order(signal, pair, entry, sl, tp1, tp2, risk):
     body = json.dumps(order)
     signature = generate_signature(timestamp, "POST", "/api/v5/trade/order", body)
 
-    headers = HEADERS.copy()
-    headers.update({
+    HEADERS.update({
         "OK-ACCESS-SIGN": signature,
         "OK-ACCESS-TIMESTAMP": timestamp
     })
 
-    session = requests.Session()
-    res = session.post(f"{BASE_URL}/api/v5/trade/order", headers=headers, data=body)
-
+    url = f"{BASE_URL}/api/v5/trade/order"
     print("[DEBUG] Sending order to OKX:", json.dumps(order, indent=2))
     print("[DEBUG] Timestamp used:", timestamp)
-    print("[DEBUG] Headers:", headers)
-    print("[DEBUG] OKX Raw Response:", res.status_code, res.text)
+    print("[DEBUG] Headers:", HEADERS)
 
+    res = requests.post(url, headers=HEADERS, data=body)
+    print("[DEBUG] OKX Raw Response:", res.status_code, res.text)
     return res.json()
 
 @app.route("/webhook", methods=["POST"])
@@ -119,6 +119,5 @@ def webhook():
 
 if __name__ == "__main__":
     app.run(debug=False, host="0.0.0.0", port=10000)
-
 
 
