@@ -1,4 +1,3 @@
-
 import os
 import hmac
 import json
@@ -11,7 +10,7 @@ from datetime import datetime
 
 app = Flask(__name__)
 
-# Load secrets from environment
+# ENV variables
 OKX_API_KEY = os.environ.get("OKX_API_KEY")
 OKX_SECRET_KEY = os.environ.get("OKX_SECRET_KEY")
 OKX_PASSPHRASE = os.environ.get("OKX_PASSPHRASE")
@@ -26,23 +25,16 @@ HEADERS = {
 def fetch_okx_server_timestamp():
     try:
         res = requests.get(f"{BASE_URL}/api/v5/public/time")
-        server_ts = int(res.json()["data"][0]["ts"])
-        local_ts = int(time.time() * 1000)
-        diff = local_ts - server_ts
-        iso_timestamp = datetime.utcfromtimestamp(server_ts / 1000).strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3] + 'Z'
-        print(f"[DEBUG] OKX Server Timestamp: {server_ts} ({iso_timestamp})")
-        print(f"[DEBUG] Local Timestamp: {local_ts} — Difference: {diff} ms")
-        return iso_timestamp
+        return res.json()["data"][0]["ts"]
     except Exception as e:
-        print("[ERROR] Failed to fetch OKX server time:", e)
-        fallback = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3] + 'Z'
-        print("[DEBUG] Using fallback ISO timestamp:", fallback)
-        return fallback
+        print("[ERROR] Fetching server timestamp:", e)
+        return str(int(time.time() * 1000))
 
 def generate_signature(timestamp, method, request_path, body=""):
     message = f"{timestamp}{method}{request_path}{body}"
     mac = hmac.new(bytes(OKX_SECRET_KEY, encoding='utf-8'),
-                   bytes(message, encoding='utf-8'), hashlib.sha256)
+                   bytes(message, encoding='utf-8'),
+                   digestmod=hashlib.sha256)
     return base64.b64encode(mac.digest()).decode()
 
 def get_usdt_balance():
@@ -64,22 +56,36 @@ def get_usdt_balance():
                 print("[DEBUG] USDT Balance:", usdt_balance)
                 return usdt_balance
     except Exception as e:
-        print("[ERROR] Failed to fetch balance:", e)
-    return 1000.0  # fallback default balance
+        print("[ERROR] Balance fetch failed:", e)
+    return 100.0  # Fallback value
+
+def get_latest_price(instId="BTC-USDT"):
+    try:
+        res = requests.get(f"{BASE_URL}/api/v5/market/ticker?instId={instId}")
+        return float(res.json()["data"][0]["last"])
+    except Exception as e:
+        print("[ERROR] Price fetch failed:", e)
+        return 83000  # Fallback price
 
 def place_order(signal, pair, entry, sl, tp1, tp2, risk):
     timestamp = fetch_okx_server_timestamp()
-    symbol = pair.replace("-", "/").upper()
-    side = "buy" if signal == "LONG" else "sell"
+    method = "POST"
+    request_path = "/api/v5/trade/order"
 
-    risk_percent = max(float(risk.strip('%')), 3.5)
+    latest_price = get_latest_price(pair)
+    side = "buy" if signal.upper() == "LONG" else "sell"
+
     usdt_balance = get_usdt_balance()
-    notional = usdt_balance * risk_percent / 100
-    size = round(notional / entry, 4)
+    risk_percent = float(str(risk).strip('%')) if '%' in str(risk) else float(risk)
+    notional = usdt_balance * (risk_percent / 100)
 
-    if notional < 10:
-        print(f"[WARNING] Notional too low (${notional:.2f}). Skipping order.")
-        return {"reason": "Notional too low", "notional": notional, "status": "Rejected"}
+    # Safety cap and floor
+    if notional < 5:
+        notional = 5
+    elif notional > usdt_balance:
+        notional = usdt_balance
+
+    size = round(notional / latest_price, 6)
 
     order = {
         "instId": pair,
@@ -90,7 +96,7 @@ def place_order(signal, pair, entry, sl, tp1, tp2, risk):
     }
 
     body = json.dumps(order)
-    signature = generate_signature(timestamp, "POST", "/api/v5/trade/order", body)
+    signature = generate_signature(timestamp, method, request_path, body)
 
     headers = HEADERS.copy()
     headers.update({
@@ -98,20 +104,21 @@ def place_order(signal, pair, entry, sl, tp1, tp2, risk):
         "OK-ACCESS-TIMESTAMP": timestamp
     })
 
-    url = f"{BASE_URL}/api/v5/trade/order"
-    print("[DEBUG] Sending order to OKX:", json.dumps(order, indent=2))
-    print("[DEBUG] Timestamp used:", timestamp)
-    print("[DEBUG] Headers:", headers)
+    print("[DEBUG] Submitting order:", order)
+    print("[DEBUG] Entry Price (live):", latest_price)
+    print("[DEBUG] Risk %:", risk_percent, "| USDT:", usdt_balance, "| Size:", size)
 
-    res = requests.post(url, headers=headers, data=body)
-    print("[DEBUG] OKX Raw Response:", res.status_code, res.text)
-    return res.json()
+    response = requests.post(f"{BASE_URL}{request_path}", headers=headers, data=body)
+    print("[DEBUG] Response:", response.status_code, response.text)
+
+    return response.json()
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
     data = request.get_json()
+    print("[DEBUG] Webhook received:", data)
+
     try:
-        print("[DEBUG] Incoming Webhook Data:", data)
         response = place_order(
             data['signal'],
             data['pair'],
@@ -123,8 +130,9 @@ def webhook():
         )
         return jsonify({"status": "Order sent", "okx_response": response})
     except Exception as e:
-        print("[ERROR] Webhook Exception:", str(e))
+        print("[ERROR] Webhook processing failed:", str(e))
         return jsonify({"status": "Error", "message": str(e)})
 
 if __name__ == "__main__":
     app.run(debug=False, host="0.0.0.0", port=10000)
+
