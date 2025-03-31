@@ -129,10 +129,13 @@ def monitor_trailing_stop(pair, entry_price, size, side):
     })
     requests.post(f"{BASE_URL}{path}", headers=headers, data=body)
 
-def place_order(signal, pair, entry, sl, tp1, tp2, risk):
+def place_order(signal, pair, entry, sl, tp1, tp2, risk, test=False):
     global daily_loss
 
-    if not is_market_volatile_enough(pair):
+    if not test:
+        if not is_market_volatile_enough(pair):
+            return {"status": "blocked", "reason": "low volatility"}
+            return {"status": "blocked", "reason": "low volatility"}
         return {"status": "blocked", "reason": "low volatility"}
     if daily_loss > DAILY_LOSS_LIMIT:
         return {"status": "blocked", "reason": "daily loss limit"}
@@ -229,7 +232,7 @@ def webhook():
             tp1 = float(data['tp1'])
             tp2 = float(data['tp2'])
 
-        response = place_order(signal, pair, entry, sl, tp1, tp2, risk)
+        response = place_order(signal, pair, entry, sl, tp1, tp2, risk, test=data.get('test', False))
         return jsonify({"status": "Order sent", "okx_response": response})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)})
