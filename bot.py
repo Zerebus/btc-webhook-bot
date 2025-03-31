@@ -24,13 +24,12 @@ HEADERS = {
 def fetch_okx_server_timestamp():
     try:
         res = requests.get(f"{BASE_URL}/api/v5/public/time")
-        ms = int(res.json()["data"][0]["ts"])
-        iso_timestamp = time.strftime('%Y-%m-%dT%H:%M:%S', time.gmtime(ms / 1000)) + f".{ms % 1000:03d}Z"
-        print("[DEBUG] OKX ISO Timestamp:", iso_timestamp)
-        return iso_timestamp
+        server_time = res.json()["data"][0]["ts"]
+        print("[DEBUG] OKX Server Timestamp:", server_time)
+        return server_time
     except Exception as e:
         print("[ERROR] Failed to fetch server timestamp:", e)
-        fallback = time.strftime('%Y-%m-%dT%H:%M:%S', time.gmtime()) + ".000Z"
+        fallback = str(int(time.time() * 1000))
         print("[DEBUG] Fallback timestamp:", fallback)
         return fallback
 
@@ -70,7 +69,8 @@ def place_order(signal, pair, entry, sl, tp1, tp2, risk):
     risk_percent = max(float(risk.strip('%')), 2.0)
     usdt_balance = get_usdt_balance()
     notional = usdt_balance * risk_percent / 100
-    size = round(notional / entry, 4)
+    raw_size = notional / entry
+    size = max(round(raw_size, 4), 0.001)  # Ensure minimum size meets OKX requirement
 
     order = {
         "instId": pair,
