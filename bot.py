@@ -1,53 +1,44 @@
+from flask import Flask, request, jsonify
+import requests
 import time
 import hmac
 import hashlib
-import base64
-import requests
 import json
-from flask import Flask, request
+import os
 
 app = Flask(__name__)
 
-# === OKX API Credentials ===
-API_KEY = "your_api_key"
-API_SECRET = "your_api_secret"
-PASSPHRASE = "your_passphrase"
+API_KEY = os.getenv("OKX_API_KEY")
+SECRET_KEY = os.getenv("OKX_SECRET_KEY")
+PASSPHRASE = os.getenv("OKX_PASSPHRASE")
 BASE_URL = "https://www.okx.com"
 
-# === Utility: Timestamp ===
 def get_timestamp():
     return str(int(time.time() * 1000))
 
-# === Utility: OKX Signature ===
-def generate_signature(timestamp, method, request_path, body):
-    if not body:
-        body = ""
-    message = f"{timestamp}{method.upper()}{request_path}{body}"
-    mac = hmac.new(API_SECRET.encode(), message.encode(), hashlib.sha256)
-    d = mac.digest()
-    return base64.b64encode(d).decode()
+def generate_signature(timestamp, method, path, body):
+    prehash = f"{timestamp}{method.upper()}{path}{body}"
+    return hmac.new(SECRET_KEY.encode(), prehash.encode(), hashlib.sha256).hexdigest()
 
-# === Core: Order Execution ===
-def place_order(signal, pair, entry, sl, tp1, tp2, risk, test=False):
+def place_order(signal, pair, sl_pct, tp1_pct, tp2_pct, risk):
     timestamp = get_timestamp()
     path = "/api/v5/trade/order"
     method = "POST"
 
-    size = 1  # Simplified; replace with position sizing logic
     side = "buy" if signal == "LONG" else "sell"
-    posSide = "long" if signal == "LONG" else "short"
+    size = "1"
 
-    body_data = {
+    body = {
         "instId": pair,
         "tdMode": "cross",
         "side": side,
         "ordType": "market",
-        "posSide": posSide,
-        "sz": str(size)
+        "sz": size,
+        "tag": "webhook-bot"
     }
 
-    body = json.dumps(body_data)
-    signature = generate_signature(timestamp, method, path, body)
+    body_json = json.dumps(body)
+    signature = generate_signature(timestamp, method, path, body_json)
 
     headers = {
         "OK-ACCESS-KEY": API_KEY,
@@ -57,48 +48,29 @@ def place_order(signal, pair, entry, sl, tp1, tp2, risk, test=False):
         "Content-Type": "application/json"
     }
 
-    try:
-        response = requests.post(f"{BASE_URL}{path}", headers=headers, data=body)
-        print("🌐 OKX Response:", response.text)
-        return response.text
-    except Exception as e:
-        print("❌ Error placing order:", str(e))
-        return str(e)
+    response = requests.post(f"{BASE_URL}{path}", headers=headers, data=body_json)
+    return response.json()
 
-# === Webhook Route ===
 @app.route("/webhook", methods=["POST"])
 def webhook():
+    data = request.get_json()
     try:
-        data = request.get_json()
-        print("✅ Webhook received:", data)
+        signal = data["signal"]
+        pair = data["pair"]
+        sl_pct = float(data["sl_pct"])
+        tp1_pct = float(data["tp1_pct"])
+        tp2_pct = float(data["tp2_pct"])
+        risk = data["risk"]
 
-        signal = data.get("signal")
-        pair = data.get("pair")
-        sl_pct = data.get("sl_pct")
-        tp1_pct = data.get("tp1_pct")
-        tp2_pct = data.get("tp2_pct")
-        risk = data.get("risk")
-        test = data.get("test", False)
-
-        # Validate required fields
-        if not all([signal, pair, sl_pct, tp1_pct, tp2_pct, risk]):
-            print("❌ Missing one or more required fields in webhook payload.")
-            return {"status": "missing fields", "message": data}, 400
-
-        print("📊 Payload parsed. Placing order...")
-        result = place_order(signal, pair, None, None, None, None, risk, test=test)
-
-        return {"status": "Order sent", "okx_response": result}, 200
+        result = place_order(signal, pair, sl_pct, tp1_pct, tp2_pct, risk)
+        return jsonify({"status": "order sent", "okx_response": result})
 
     except Exception as e:
-        print("🔥 Error in webhook:", e)
-        return {"status": "error", "message": str(e)}, 500
+        return jsonify({"status": "error", "message": str(e)})
 
-# === Health Check Route ===
-@app.route("/healthz")
-def health():
-    return "ok", 200
+@app.route("/", methods=["GET"])
+def home():
+    return "Webhook Bot is live on Render!"
 
 if __name__ == "__main__":
-    app.run(debug=True, host="0.0.0.0", port=10000)
-
+    app.run(host="0.0.0.0", port=10000)
