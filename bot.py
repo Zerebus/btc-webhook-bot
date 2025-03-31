@@ -213,6 +213,18 @@ def place_order(signal, pair, entry, sl, tp1, tp2, risk):
 def webhook():
     data = request.get_json()
     try:
+
+    if "sl_pct" in data and "tp1_pct" in data and "tp2_pct" in data:
+        entry = get_latest_price(pair)
+        sl = entry * (1 - float(data['sl_pct']) / 100) if signal.upper() == "LONG" else entry * (1 + float(data['sl_pct']) / 100)
+        tp1 = entry * (1 + float(data['tp1_pct']) / 100) if signal.upper() == "LONG" else entry * (1 - float(data['tp1_pct']) / 100)
+        tp2 = entry * (1 + float(data['tp2_pct']) / 100) if signal.upper() == "LONG" else entry * (1 - float(data['tp2_pct']) / 100)
+    else:
+        entry = float(data['entry'])
+        sl = float(data['sl'])
+        tp1 = float(data['tp1'])
+        tp2 = float(data['tp2'])
+
         response = place_order(
             data['signal'], data['pair'], float(data['entry']),
             float(data['sl']), float(data['tp1']), float(data['tp2']),
