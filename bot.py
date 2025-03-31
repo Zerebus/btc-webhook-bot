@@ -5,6 +5,7 @@ import time
 import base64
 import hashlib
 import requests
+from datetime import datetime
 from flask import Flask, request, jsonify
 
 app = Flask(__name__)
@@ -24,13 +25,15 @@ HEADERS = {
 def fetch_okx_server_timestamp():
     try:
         res = requests.get(f"{BASE_URL}/api/v5/public/time")
-        server_time = res.json()["data"][0]["ts"]
-        print("[DEBUG] OKX Server Timestamp:", server_time)
-        return server_time
+        server_ms = int(res.json()["data"][0]["ts"])
+        dt = datetime.utcfromtimestamp(server_ms / 1000)
+        iso_timestamp = dt.isoformat(timespec="milliseconds") + "Z"
+        print("[DEBUG] OKX Server ISO Timestamp:", iso_timestamp)
+        return iso_timestamp
     except Exception as e:
         print("[ERROR] Failed to fetch server timestamp:", e)
-        fallback = str(int(time.time() * 1000))
-        print("[DEBUG] Fallback timestamp:", fallback)
+        fallback = datetime.utcnow().isoformat(timespec="milliseconds") + "Z"
+        print("[DEBUG] Fallback ISO Timestamp:", fallback)
         return fallback
 
 def generate_signature(timestamp, method, request_path, body=""):
