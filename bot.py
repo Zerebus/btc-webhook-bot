@@ -143,6 +143,7 @@ def monitor_trailing_stop(pair, entry_price, size, side):
 def place_order(signal, pair, entry, sl, tp1, tp2, risk):
     global daily_loss
     global daily_loss
+    global daily_loss
     if not is_market_volatile_enough(pair):
         return {"status": "blocked", "reason": "low volatility"}
     if daily_loss > DAILY_LOSS_LIMIT:
