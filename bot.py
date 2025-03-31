@@ -17,9 +17,6 @@ BASE_URL = "https://www.okx.com"
 def home():
     return "BTC Webhook Bot is running!"
 
-def get_timestamp():
-    return str(int(requests.get("https://www.okx.com/api/v5/public/time").json()["data"][0]["ts"]))
-
 def sign(timestamp, method, request_path, body=""):
     message = f"{timestamp}{method}{request_path}{body}"
     return hmac.new(API_SECRET.encode(), message.encode(), hashlib.sha256).hexdigest()
