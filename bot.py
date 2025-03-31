@@ -15,6 +15,24 @@ OKX_SECRET_KEY = os.environ.get("OKX_SECRET_KEY")
 OKX_PASSPHRASE = os.environ.get("OKX_PASSPHRASE")
 BASE_URL = "https://www.okx.com"
 
+HEADERS = {
+    "Content-Type": "application/json",
+    "OK-ACCESS-KEY": OKX_API_KEY,
+    "OK-ACCESS-PASSPHRASE": OKX_PASSPHRASE
+}
+
+def fetch_okx_server_timestamp():
+    try:
+        res = requests.get(f"{BASE_URL}/api/v5/public/time")
+        server_time = res.json()["data"][0]["ts"]
+        print("[DEBUG] OKX Server Timestamp:", server_time)
+        return server_time
+    except Exception as e:
+        print("[ERROR] Failed to fetch server timestamp:", e)
+        fallback = str(int(time.time() * 1000))
+        print("[DEBUG] Fallback timestamp:", fallback)
+        return fallback
+
 def generate_signature(timestamp, method, request_path, body=""):
     message = f"{timestamp}{method}{request_path}{body}"
     mac = hmac.new(bytes(OKX_SECRET_KEY, encoding='utf-8'),
@@ -22,6 +40,8 @@ def generate_signature(timestamp, method, request_path, body=""):
     return base64.b64encode(mac.digest()).decode()
 
 def place_order(signal, pair, entry, sl, tp1, tp2, risk):
+    timestamp = fetch_okx_server_timestamp()
+
     symbol = pair.replace("-", "/").upper()
     side = "buy" if signal == "LONG" else "sell"
 
@@ -38,24 +58,19 @@ def place_order(signal, pair, entry, sl, tp1, tp2, risk):
     }
 
     body = json.dumps(order)
-    ts = str(int(time.time() * 1000))  # Generate timestamp just-in-time
+    signature = generate_signature(timestamp, "POST", "/api/v5/trade/order", body)
 
-    signature = generate_signature(ts, "POST", "/api/v5/trade/order", body)
-
-    headers = {
-        "Content-Type": "application/json",
-        "OK-ACCESS-KEY": OKX_API_KEY,
-        "OK-ACCESS-PASSPHRASE": OKX_PASSPHRASE,
+    HEADERS.update({
         "OK-ACCESS-SIGN": signature,
-        "OK-ACCESS-TIMESTAMP": ts
-    }
+        "OK-ACCESS-TIMESTAMP": timestamp
+    })
 
     url = f"{BASE_URL}/api/v5/trade/order"
     print("[DEBUG] Sending order to OKX:", json.dumps(order, indent=2))
-    print("[DEBUG] Timestamp used:", ts)
-    print("[DEBUG] Headers:", headers)
+    print("[DEBUG] Timestamp used:", timestamp)
+    print("[DEBUG] Headers:", HEADERS)
 
-    res = requests.post(url, headers=headers, data=body)
+    res = requests.post(url, headers=HEADERS, data=body)
     print("[DEBUG] OKX Raw Response:", res.status_code, res.text)
     return res.json()
 
@@ -80,5 +95,4 @@ def webhook():
 
 if __name__ == "__main__":
     app.run(debug=False, host="0.0.0.0", port=10000)
-
 
