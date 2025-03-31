@@ -51,7 +51,6 @@ def get_usdt_balance():
     headers.update({
         "OK-ACCESS-SIGN": signature,
         "OK-ACCESS-TIMESTAMP": timestamp
-    })
     try:
         res = requests.get(f"{BASE_URL}/api/v5/account/balance", headers=headers)
         balances = res.json()["data"][0]["details"]
@@ -93,7 +92,6 @@ def set_leverage(pair, leverage, mode="cross"):
     headers.update({
         "OK-ACCESS-SIGN": sig,
         "OK-ACCESS-TIMESTAMP": timestamp
-    })
     try:
         requests.post(f"{BASE_URL}{path}", headers=headers, data=body)
     except:
@@ -126,7 +124,6 @@ def monitor_trailing_stop(pair, entry_price, size, side):
     headers.update({
         "OK-ACCESS-SIGN": sig,
         "OK-ACCESS-TIMESTAMP": timestamp
-    })
     requests.post(f"{BASE_URL}{path}", headers=headers, data=body)
 
 def place_order(signal, pair, entry, sl, tp1, tp2, risk, test=False):
@@ -171,7 +168,6 @@ def place_order(signal, pair, entry, sl, tp1, tp2, risk, test=False):
     headers.update({
         "OK-ACCESS-SIGN": sig,
         "OK-ACCESS-TIMESTAMP": timestamp
-    })
     response = requests.post(f"{BASE_URL}{path}", headers=headers, data=body)
     print('🔁 OKX Response:', response.text)
 
@@ -236,25 +232,51 @@ def webhook():
         response = place_order(signal, pair, entry, sl, tp1, tp2, risk, test=data.get('test', False))
         if hasattr(response, 'json'):
             okx_response = response.json()
+        return jsonify({
+            "status": "Order sent",
+            "okx_response": okx_response,
+            "raw_text": raw_text
+        })
             raw_text = response.text
+        return jsonify({
+            "status": "Order sent",
+            "okx_response": okx_response,
+            "raw_text": raw_text
+        })
         else:
             okx_response = response
+        return jsonify({
+            "status": "Order sent",
+            "okx_response": okx_response,
+            "raw_text": raw_text
+        })
             raw_text = str(response)
         return jsonify({
             "status": "Order sent",
             "okx_response": okx_response,
             "raw_text": raw_text
         })
-            "status": "Order sent",
-            "okx_response": response.json(),
-            "raw_text": response.text
-        })
     except Exception as e:
         if hasattr(response, 'json'):
             okx_response = response.json()
+        return jsonify({
+            "status": "Order sent",
+            "okx_response": okx_response,
+            "raw_text": raw_text
+        })
             raw_text = response.text
+        return jsonify({
+            "status": "Order sent",
+            "okx_response": okx_response,
+            "raw_text": raw_text
+        })
         else:
             okx_response = response
+        return jsonify({
+            "status": "Order sent",
+            "okx_response": okx_response,
+            "raw_text": raw_text
+        })
             raw_text = str(response)
         return jsonify({
             "status": "Order sent",
