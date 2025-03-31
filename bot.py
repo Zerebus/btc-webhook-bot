@@ -234,12 +234,32 @@ def webhook():
             tp2 = float(data['tp2'])
 
         response = place_order(signal, pair, entry, sl, tp1, tp2, risk, test=data.get('test', False))
+        if hasattr(response, 'json'):
+            okx_response = response.json()
+            raw_text = response.text
+        else:
+            okx_response = response
+            raw_text = str(response)
         return jsonify({
+            "status": "Order sent",
+            "okx_response": okx_response,
+            "raw_text": raw_text
+        })
             "status": "Order sent",
             "okx_response": response.json(),
             "raw_text": response.text
         })
     except Exception as e:
-        return jsonify({"status": "error", "message": str(e)})
+        if hasattr(response, 'json'):
+            okx_response = response.json()
+            raw_text = response.text
+        else:
+            okx_response = response
+            raw_text = str(response)
+        return jsonify({
+            "status": "Order sent",
+            "okx_response": okx_response,
+            "raw_text": raw_text
+        })
 if __name__ == "__main__":
     app.run(debug=False, host="0.0.0.0", port=10000)
