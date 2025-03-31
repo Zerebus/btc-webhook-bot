@@ -5,7 +5,6 @@ import time
 import base64
 import hashlib
 import requests
-from datetime import datetime
 from flask import Flask, request, jsonify
 
 app = Flask(__name__)
@@ -25,15 +24,13 @@ HEADERS = {
 def fetch_okx_server_timestamp():
     try:
         res = requests.get(f"{BASE_URL}/api/v5/public/time")
-        server_ms = int(res.json()["data"][0]["ts"])
-        dt = datetime.utcfromtimestamp(server_ms / 1000)
-        iso_timestamp = dt.isoformat(timespec="milliseconds") + "Z"
-        print("[DEBUG] OKX Server ISO Timestamp:", iso_timestamp)
-        return iso_timestamp
+        server_time = res.json()["data"][0]["ts"]
+        print("[DEBUG] OKX Server Timestamp:", server_time)
+        return server_time
     except Exception as e:
         print("[ERROR] Failed to fetch server timestamp:", e)
-        fallback = datetime.utcnow().isoformat(timespec="milliseconds") + "Z"
-        print("[DEBUG] Fallback ISO Timestamp:", fallback)
+        fallback = str(int(time.time() * 1000))
+        print("[DEBUG] Fallback timestamp:", fallback)
         return fallback
 
 def generate_signature(timestamp, method, request_path, body=""):
@@ -42,14 +39,36 @@ def generate_signature(timestamp, method, request_path, body=""):
                    bytes(message, encoding='utf-8'), hashlib.sha256)
     return base64.b64encode(mac.digest()).decode()
 
+def get_usdt_balance():
+    timestamp = fetch_okx_server_timestamp()
+    signature = generate_signature(timestamp, "GET", "/api/v5/account/balance")
+
+    headers = HEADERS.copy()
+    headers.update({
+        "OK-ACCESS-SIGN": signature,
+        "OK-ACCESS-TIMESTAMP": timestamp
+    })
+
+    try:
+        res = requests.get(f"{BASE_URL}/api/v5/account/balance", headers=headers)
+        balances = res.json()["data"][0]["details"]
+        for asset in balances:
+            if asset["ccy"] == "USDT":
+                usdt_balance = float(asset["cashBal"])
+                print("[DEBUG] USDT Balance:", usdt_balance)
+                return usdt_balance
+    except Exception as e:
+        print("[ERROR] Failed to fetch balance:", e)
+    return 1000.0  # fallback default balance
+
 def place_order(signal, pair, entry, sl, tp1, tp2, risk):
     timestamp = fetch_okx_server_timestamp()
-
     symbol = pair.replace("-", "/").upper()
     side = "buy" if signal == "LONG" else "sell"
 
     risk_percent = max(float(risk.strip('%')), 2.0)
-    notional = 376 * risk_percent / 100
+    usdt_balance = get_usdt_balance()
+    notional = usdt_balance * risk_percent / 100
     size = round(notional / entry, 4)
 
     order = {
