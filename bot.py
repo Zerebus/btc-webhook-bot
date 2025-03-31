@@ -61,7 +61,15 @@ def get_usdt_balance():
                 return usdt_balance
     except Exception as e:
         print("[ERROR] Failed to fetch balance:", e)
-    return 1000.0  # fallback default balance
+    return 376.63  # fallback default
+
+def get_market_price(pair):
+    try:
+        response = requests.get(f"{BASE_URL}/api/v5/market/ticker?instId={pair}")
+        return float(response.json()['data'][0]['last'])
+    except Exception as e:
+        print("[ERROR] Failed to fetch market price:", e)
+        return 0.0
 
 def place_order(signal, pair, entry, sl, tp1, tp2, risk):
     timestamp = fetch_okx_server_timestamp()
@@ -71,7 +79,19 @@ def place_order(signal, pair, entry, sl, tp1, tp2, risk):
     risk_percent = max(float(risk.strip('%')), 2.0)
     usdt_balance = get_usdt_balance()
     notional = usdt_balance * risk_percent / 100
+
+    # Minimum notional check (e.g. $10 minimum enforced by OKX)
+    if notional < 10:
+        return {"status": "Rejected", "reason": "Notional too low (must be >= $10)"}
+
     size = round(notional / entry, 4)
+    size = max(size, 0.001)  # Enforce OKX minimum order size
+
+    # Sanity check: market price vs entry
+    market_price = get_market_price(pair)
+    print("[DEBUG] Market Price:", market_price)
+    if abs(entry - market_price) > market_price * 0.02:
+        return {"status": "Rejected", "reason": "Entry price too far from market"}
 
     order = {
         "instId": pair,
@@ -119,5 +139,6 @@ def webhook():
 
 if __name__ == "__main__":
     app.run(debug=False, host="0.0.0.0", port=10000)
+
 
 
