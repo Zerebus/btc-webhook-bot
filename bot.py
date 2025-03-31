@@ -12,13 +12,11 @@ from datetime import datetime, timedelta
 
 app = Flask(__name__)
 
-# === CONFIG ===
 OKX_API_KEY = os.environ.get("OKX_API_KEY")
 OKX_SECRET_KEY = os.environ.get("OKX_SECRET_KEY")
 OKX_PASSPHRASE = os.environ.get("OKX_PASSPHRASE")
 BASE_URL = "https://www.okx.com"
 
-# === RUNTIME STATE ===
 HEADERS = {
     "Content-Type": "application/json",
     "OK-ACCESS-KEY": OKX_API_KEY,
@@ -27,14 +25,12 @@ HEADERS = {
 
 open_trades = {}
 daily_loss = 0.0
-last_trade_time = {}
 cooldown_until = {}
 
-DAILY_LOSS_LIMIT = 5  # percent
+DAILY_LOSS_LIMIT = 5
 COOLDOWN_MINUTES = 10
-TRAIL_PERCENT = 1.5   # trailing stop %
+TRAIL_PERCENT = 1.5
 
-# === UTILS ===
 def fetch_okx_server_timestamp():
     try:
         res = requests.get(f"{BASE_URL}/api/v5/public/time")
@@ -44,7 +40,9 @@ def fetch_okx_server_timestamp():
 
 def generate_signature(timestamp, method, request_path, body=""):
     message = f"{timestamp}{method}{request_path}{body}"
-    mac = hmac.new(bytes(OKX_SECRET_KEY, encoding='utf-8'), bytes(message, encoding='utf-8'), digestmod=hashlib.sha256)
+    mac = hmac.new(bytes(OKX_SECRET_KEY, encoding='utf-8'),
+                   bytes(message, encoding='utf-8'),
+                   digestmod=hashlib.sha256)
     return base64.b64encode(mac.digest()).decode()
 
 def get_usdt_balance():
@@ -82,7 +80,6 @@ def is_market_volatile_enough(pair, threshold=0.75, lookback=10):
         highs = [float(c[2]) for c in candles]
         lows = [float(c[3]) for c in candles]
         range_pct = ((max(highs) - min(lows)) / min(lows)) * 100
-        print(f"[VOLATILITY] {pair} range over last {lookback} candles: {range_pct:.2f}%")
         return range_pct >= threshold
     except:
         return True
@@ -91,14 +88,12 @@ def set_leverage(pair, leverage, mode="cross"):
     timestamp = fetch_okx_server_timestamp()
     method = "POST"
     path = "/api/v5/account/set-leverage"
-
     leverage = min(int(leverage), 5)
     payload = {
         "instId": pair,
         "lever": str(leverage),
         "mgnMode": mode
     }
-
     body = json.dumps(payload)
     sig = generate_signature(timestamp, method, path, body)
 
@@ -109,15 +104,12 @@ def set_leverage(pair, leverage, mode="cross"):
     })
 
     try:
-        res = requests.post(f"{BASE_URL}{path}", headers=headers, data=body)
-        print(f"[LEVERAGE] Set {pair} to {leverage}x:", res.status_code)
-    except Exception as e:
-        print("[ERROR] Set leverage failed:", e)
+        requests.post(f"{BASE_URL}{path}", headers=headers, data=body)
+    except:
+        pass
 
 def monitor_trailing_stop(pair, entry_price, size, side):
-    print(f"[TRAIL] Monitoring {pair} trailing stop...")
     peak = get_latest_price(pair)
-
     while True:
         time.sleep(10)
         price = get_latest_price(pair)
@@ -129,12 +121,9 @@ def monitor_trailing_stop(pair, entry_price, size, side):
             if price < peak: peak = price
             if price >= peak * (1 + TRAIL_PERCENT / 100):
                 break
-
-    # Market exit
     timestamp = fetch_okx_server_timestamp()
     method = "POST"
     path = "/api/v5/trade/order"
-
     order = {
         "instId": pair,
         "tdMode": "cross",
@@ -142,7 +131,6 @@ def monitor_trailing_stop(pair, entry_price, size, side):
         "ordType": "market",
         "sz": str(size)
     }
-
     body = json.dumps(order)
     sig = generate_signature(timestamp, method, path, body)
     headers = HEADERS.copy()
@@ -150,21 +138,15 @@ def monitor_trailing_stop(pair, entry_price, size, side):
         "OK-ACCESS-SIGN": sig,
         "OK-ACCESS-TIMESTAMP": timestamp
     })
+    requests.post(f"{BASE_URL}{path}", headers=headers, data=body)
 
-    res = requests.post(f"{BASE_URL}{path}", headers=headers, data=body)
-    print("[TRAIL] Exit triggered:", res.status_code, res.text)
-
-# === CORE FUNCTION ===
 def place_order(signal, pair, entry, sl, tp1, tp2, risk):
     if not is_market_volatile_enough(pair):
         return {"status": "blocked", "reason": "low volatility"}
-
     if daily_loss > DAILY_LOSS_LIMIT:
         return {"status": "blocked", "reason": "daily loss limit"}
-
     if pair in cooldown_until and datetime.utcnow() < cooldown_until[pair]:
         return {"status": "blocked", "reason": "cooldown active"}
-
     if open_trades.get(pair, False):
         return {"status": "skipped", "reason": "duplicate trade"}
     open_trades[pair] = True
@@ -174,12 +156,10 @@ def place_order(signal, pair, entry, sl, tp1, tp2, risk):
     path = "/api/v5/trade/order"
     price = get_latest_price(pair)
     side = "buy" if signal.upper() == "LONG" else "sell"
-
     balance = get_usdt_balance()
     risk_percent = float(str(risk).strip('%')) if '%' in str(risk) else float(risk)
     notional = max(5, min(balance * risk_percent / 100, balance))
     size = round(notional / price, 6)
-
     stop_pct = abs(entry - sl) / entry
     leverage = max(1, min(int(risk_percent / stop_pct), 5))
     set_leverage(pair, leverage)
@@ -191,7 +171,6 @@ def place_order(signal, pair, entry, sl, tp1, tp2, risk):
         "ordType": "market",
         "sz": str(size)
     }
-
     body = json.dumps(order)
     sig = generate_signature(timestamp, method, path, body)
     headers = HEADERS.copy()
@@ -199,9 +178,7 @@ def place_order(signal, pair, entry, sl, tp1, tp2, risk):
         "OK-ACCESS-SIGN": sig,
         "OK-ACCESS-TIMESTAMP": timestamp
     })
-
     response = requests.post(f"{BASE_URL}{path}", headers=headers, data=body)
-    print("[ORDER] Response:", response.status_code, response.text)
 
     try:
         tp1_size = round(size * 0.5, 6)
@@ -213,7 +190,6 @@ def place_order(signal, pair, entry, sl, tp1, tp2, risk):
             "ordType": "trigger",
             "reduceOnly": True
         }
-
         for target, target_size in [(tp1, tp1_size), (tp2, tp2_size)]:
             tp_order = common.copy()
             tp_order.update({"triggerPx": str(target), "px": str(target), "sz": str(target_size)})
@@ -222,9 +198,7 @@ def place_order(signal, pair, entry, sl, tp1, tp2, risk):
             tp_headers = headers.copy()
             tp_headers.update({"OK-ACCESS-SIGN": tp_sig})
             requests.post(f"{BASE_URL}{path}", headers=tp_headers, data=tp_body)
-
         threading.Thread(target=monitor_trailing_stop, args=(pair, entry, tp2_size, side), daemon=True).start()
-
         sl_order = common.copy()
         sl_order.update({"triggerPx": str(sl), "px": str(sl), "sz": str(size)})
         sl_body = json.dumps(sl_order)
@@ -232,26 +206,22 @@ def place_order(signal, pair, entry, sl, tp1, tp2, risk):
         sl_headers = headers.copy()
         sl_headers.update({"OK-ACCESS-SIGN": sl_sig})
         requests.post(f"{BASE_URL}{path}", headers=sl_headers, data=sl_body)
-    except Exception as e:
-        print("[ERROR] TP/SL Error:", e)
+    except:
+        pass
 
     mock_exit_price = price * 0.98 if side == "buy" else price * 1.02
     pnl = (mock_exit_price - entry) if side == "buy" else (entry - mock_exit_price)
     pnl_percent = (pnl / entry) * 100
-
     if pnl_percent < 0:
         global daily_loss
         daily_loss += abs(pnl_percent)
         cooldown_until[pair] = datetime.utcnow() + timedelta(minutes=COOLDOWN_MINUTES)
-
     open_trades[pair] = False
     return response.json()
 
-# === FLASK ROUTE ===
 @app.route("/webhook", methods=["POST"])
 def webhook():
     data = request.get_json()
-    print("[DEBUG] Webhook received:", data)
     try:
         response = place_order(
             data['signal'], data['pair'], float(data['entry']),
