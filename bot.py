@@ -1,3 +1,4 @@
+
 import os
 import hmac
 import json
@@ -25,10 +26,14 @@ HEADERS = {
 def fetch_okx_server_timestamp():
     try:
         res = requests.get(f"{BASE_URL}/api/v5/public/time")
-        return res.json()["data"][0]["ts"]
+        server_time = res.json()["data"][0]["ts"]
+        # OKX returns timestamp in milliseconds. Convert to seconds and keep 3 decimals
+        formatted_timestamp = str(int(server_time) / 1000)
+        print("[DEBUG] OKX Server Timestamp (seconds):", formatted_timestamp)
+        return formatted_timestamp
     except Exception as e:
-        print("[ERROR] Failed to fetch OKX server time:", e)
-        return str(int(time.time() * 1000))
+        print("[ERROR] Failed to fetch timestamp:", e)
+        return str(time.time())
 
 def generate_signature(timestamp, method, request_path, body=""):
     message = f"{timestamp}{method}{request_path}{body}"
@@ -63,44 +68,35 @@ def place_order(signal, pair, entry, sl, tp1, tp2, risk):
     symbol = pair.replace("-", "/").upper()
     side = "buy" if signal == "LONG" else "sell"
 
-    try:
-        risk_percent = max(float(risk.strip('%')), 2.0)
-        usdt_balance = get_usdt_balance()
-        notional = usdt_balance * risk_percent / 100
+    risk_percent = max(float(risk.strip('%')), 2.0)
+    usdt_balance = get_usdt_balance()
+    notional = usdt_balance * risk_percent / 100
+    size = round(notional / entry, 4)
 
-        if notional < 10:
-            return {"reason": "Notional too low (must be >= $10)", "status": "Rejected"}
+    order = {
+        "instId": pair,
+        "tdMode": "cross",
+        "side": side,
+        "ordType": "market",
+        "sz": str(size)
+    }
 
-        size = round(notional / entry, 4)
+    body = json.dumps(order)
+    signature = generate_signature(timestamp, "POST", "/api/v5/trade/order", body)
 
-        order = {
-            "instId": pair,
-            "tdMode": "cross",
-            "side": side,
-            "ordType": "market",
-            "sz": str(size)
-        }
+    HEADERS.update({
+        "OK-ACCESS-SIGN": signature,
+        "OK-ACCESS-TIMESTAMP": timestamp
+    })
 
-        body = json.dumps(order)
-        signature = generate_signature(timestamp, "POST", "/api/v5/trade/order", body)
+    url = f"{BASE_URL}/api/v5/trade/order"
+    print("[DEBUG] Sending order to OKX:", json.dumps(order, indent=2))
+    print("[DEBUG] Timestamp used:", timestamp)
+    print("[DEBUG] Headers:", HEADERS)
 
-        HEADERS.update({
-            "OK-ACCESS-SIGN": signature,
-            "OK-ACCESS-TIMESTAMP": timestamp
-        })
-
-        url = f"{BASE_URL}/api/v5/trade/order"
-        print("[DEBUG] Sending order to OKX:", json.dumps(order, indent=2))
-        print("[DEBUG] Timestamp used:", timestamp)
-        print("[DEBUG] Headers:", HEADERS)
-
-        res = requests.post(url, headers=HEADERS, data=body)
-        print("[DEBUG] OKX Raw Response:", res.status_code, res.text)
-        return res.json()
-
-    except Exception as e:
-        print("[ERROR] Order placement failed:", e)
-        return {"status": "Error", "message": str(e)}
+    res = requests.post(url, headers=HEADERS, data=body)
+    print("[DEBUG] OKX Raw Response:", res.status_code, res.text)
+    return res.json()
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
