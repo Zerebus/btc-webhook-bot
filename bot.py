@@ -1,4 +1,9 @@
 from flask import Flask, request, jsonify
+
+def get_okx_timestamp():
+    """Fetch fresh timestamp from OKX server."""
+    return str(int(requests.get("https://www.okx.com/api/v5/public/time").json()["data"][0]["ts"]))
+
 import requests
 import time
 import hmac
