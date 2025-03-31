@@ -69,8 +69,7 @@ def place_order(signal, pair, entry, sl, tp1, tp2, risk):
     risk_percent = max(float(risk.strip('%')), 2.0)
     usdt_balance = get_usdt_balance()
     notional = usdt_balance * risk_percent / 100
-    raw_size = notional / entry
-    size = max(round(raw_size, 4), 0.001)  # Ensure minimum size meets OKX requirement
+    size = round(notional / entry, 4)
 
     order = {
         "instId": pair,
@@ -83,18 +82,20 @@ def place_order(signal, pair, entry, sl, tp1, tp2, risk):
     body = json.dumps(order)
     signature = generate_signature(timestamp, "POST", "/api/v5/trade/order", body)
 
-    HEADERS.update({
+    headers = HEADERS.copy()
+    headers.update({
         "OK-ACCESS-SIGN": signature,
         "OK-ACCESS-TIMESTAMP": timestamp
     })
 
-    url = f"{BASE_URL}/api/v5/trade/order"
+    session = requests.Session()
+    res = session.post(f"{BASE_URL}/api/v5/trade/order", headers=headers, data=body)
+
     print("[DEBUG] Sending order to OKX:", json.dumps(order, indent=2))
     print("[DEBUG] Timestamp used:", timestamp)
-    print("[DEBUG] Headers:", HEADERS)
-
-    res = requests.post(url, headers=HEADERS, data=body)
+    print("[DEBUG] Headers:", headers)
     print("[DEBUG] OKX Raw Response:", res.status_code, res.text)
+
     return res.json()
 
 @app.route("/webhook", methods=["POST"])
@@ -118,5 +119,6 @@ def webhook():
 
 if __name__ == "__main__":
     app.run(debug=False, host="0.0.0.0", port=10000)
+
 
 
