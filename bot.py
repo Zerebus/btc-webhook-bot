@@ -33,7 +33,7 @@ def place_order(signal, pair, entry, sl, tp1, tp2, risk, test=False):
 
     side = "buy" if signal.upper() == "LONG" else "sell"
 
-    timestamp = get_timestamp()
+    timestamp = str(int(requests.get("https://www.okx.com/api/v5/public/time").json()["data"][0]["ts"]))
     path = "/api/v5/trade/order"
     body = json.dumps({
         "instId": pair,
