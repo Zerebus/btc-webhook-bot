@@ -18,7 +18,7 @@ def home():
     return "BTC Webhook Bot is running!"
 
 def get_timestamp():
-    return requests.get("https://www.okx.com/api/v5/public/time").json()["data"][0]["ts"]
+    return str(int(requests.get("https://www.okx.com/api/v5/public/time").json()["data"][0]["ts"]))
 
 def sign(timestamp, method, request_path, body=""):
     message = f"{timestamp}{method}{request_path}{body}"
