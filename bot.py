@@ -321,6 +321,7 @@ def place_order(signal, pair, entry, sl, tp1, tp2, risk):
 
     
     open_trades[pair] = False  # Unlock after sending TP/SL
+    return response.json()
 
     # Simulated outcome for PnL tracking
     mock_exit_price = latest_price * 0.98 if side == "buy" else latest_price * 1.02
@@ -358,4 +359,3 @@ def webhook():
 
 if __name__ == "__main__":
     app.run(debug=False, host="0.0.0.0", port=10000)
-
