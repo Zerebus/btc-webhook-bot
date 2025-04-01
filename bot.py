@@ -1,11 +1,12 @@
 import os
 import json
-import asyncio
 import logging
-from flask import Flask, request, jsonify
-from dotenv import load_dotenv
-from telegram import Bot
+import asyncio
 import aiohttp
+from flask import Flask, request
+from telegram import Bot
+from telegram.constants import ParseMode
+from dotenv import load_dotenv
 
 load_dotenv()
 
@@ -14,67 +15,55 @@ TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
 app = Flask(__name__)
 logging.basicConfig(level=logging.INFO)
-
 bot = Bot(token=TELEGRAM_BOT_TOKEN)
-session = aiohttp.ClientSession()  # Shared session
+session = None  # will be initialized in before_serving
+
+@app.before_serving
+async def create_session():
+    global session
+    session = aiohttp.ClientSession()
+
+@app.after_serving
+async def close_session():
+    await session.close()
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
-    data = request.get_json()
-    logging.info(f"Received webhook data: {data}")
-
-    signal = data.get("signal")
-    pair = data.get("pair")
-    sl_pct = data.get("sl_pct")
-    tp1_pct = data.get("tp1_pct")
-    tp2_pct = data.get("tp2_pct")
-    risk = data.get("risk")
-    test_mode = data.get("test", False)
-
-    if test_mode:
-        title = "📈 LONG SIGNAL (Test Mode Active)" if signal == "LONG" else "📉 SHORT SIGNAL (Test Mode Active)"
-        message = (
-            f"<b>{title}</b>\n"
-            f"<b>Pair:</b> {pair}\n"
-            f"<b>Risk:</b> {risk}\n"
-            f"<b>SL:</b> {sl_pct}%\n"
-            f"<b>TP1:</b> {tp1_pct}%\n"
-            f"<b>TP2:</b> {tp2_pct}%"
-        )
-    else:
-        message = "🚀 Test alert from your webhook bot!"
-
     try:
-        asyncio.run(send_message(TELEGRAM_CHAT_ID, message))
-        logging.info("Telegram alert sent successfully.")
+        data = request.json
+        logging.info("Received webhook data: %s", data)
+
+        # Extract data safely
+        signal = data.get("signal", "N/A")
+        pair = data.get("pair", "N/A")
+        sl_pct = data.get("sl_pct", "N/A")
+        tp1_pct = data.get("tp1_pct", "N/A")
+        tp2_pct = data.get("tp2_pct", "N/A")
+        risk = data.get("risk", "N/A")
+        test_mode = data.get("test", True)
+
+        # Build fancy message
+        title = f"\uD83D\uDCC8 <b>{signal} SIGNAL</b> {'<i>(Test Mode Active)</i>' if test_mode else ''}"
+        details = f"""
+<b>Pair:</b> {pair}
+<b>Risk:</b> {risk}
+<b>SL:</b> {sl_pct}
+<b>TP1:</b> {tp1_pct}
+<b>TP2:</b> {tp2_pct}
+"""
+        message = f"{title}\n{details}"
+
+        asyncio.run(send_message(message))
+        logging.info("Test alert sent to Telegram.")
+
+        return {"status": "ok"}, 200
+
     except Exception as e:
-        logging.error(f"Telegram error: {e}")
+        logging.exception("Webhook processing failed")
+        return {"error": str(e)}, 500
 
-    return jsonify({"status": "ok"})
-
-async def send_message(chat_id, text):
-    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-    payload = {
-        "chat_id": chat_id,
-        "text": text,
-        "parse_mode": "HTML",
-    }
-    async with session.post(url, json=payload) as response:
-        return await response.text()
-
-@app.before_first_request
-def setup_event_loop():
-    global loop
-    loop = asyncio.get_event_loop()
-
-@app.route("/")
-def home():
-    return "Webhook bot is running."
-
-@app.teardown_appcontext
-def cleanup(exception=None):
-    if session and not session.closed:
-        loop.run_until_complete(session.close())
+async def send_message(text):
+    await bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=text, parse_mode=ParseMode.HTML)
 
 if __name__ == "__main__":
-    app.run(debug=False, port=5000)
+    app.run(debug=True, port=5000)
