@@ -1,4 +1,3 @@
-
 from flask import Flask, request
 import json
 import logging
@@ -116,3 +115,26 @@ def execute_okx_trade(data):
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+
+@app.route('/webhook', methods=['POST'])
+def webhook():
+    data = request.get_json()
+    print(f"Received webhook data: {data}")
+    
+    # Format message
+    title = f"📉 SHORT SIGNAL" if data["signal"] == "SHORT" else "📈 LONG SIGNAL"
+    message = f"""
+<b>{title}</b>
+
+<b>Pair:</b> {data['pair']}
+<b>Risk:</b> {data['risk']}
+<b>SL:</b> {data['sl_pct']}%
+<b>TP1:</b> {data['tp1_pct']}%
+<b>TP2:</b> {data['tp2_pct']}%
+{"<b>🧪 Test Mode Active</b>" if data.get("test") else ""}
+    """
+
+    # Send to Telegram
+    bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=message, parse_mode=telegram.constants.ParseMode.HTML)
+
+    return '', 200
