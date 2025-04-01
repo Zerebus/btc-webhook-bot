@@ -1,67 +1,105 @@
+
 import os
-import logging
+import json
+import hmac
+import hashlib
+import time
+import requests
 from flask import Flask, request, jsonify
-import telegram
+from dotenv import load_dotenv
+
+# Load .env file from Render secret path
+load_dotenv("/etc/secrets/.env")
 
 app = Flask(__name__)
 
-# Setup logging
-logging.basicConfig(level=logging.INFO)
-
-# Load Telegram credentials from environment variables
+# --- ENV VARIABLES ---
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
+OKX_API_KEY = os.getenv("OKX_API_KEY")
+OKX_SECRET_KEY = os.getenv("OKX_SECRET_KEY")
+OKX_PASSPHRASE = os.getenv("OKX_PASSPHRASE")
+OKX_BASE_URL = "https://www.okx.com"
 
-# Initialize the Telegram bot
-bot = telegram.Bot(token=TELEGRAM_BOT_TOKEN)
+# --- TELEGRAM ---
+def send_telegram_message(message):
+    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+        print("❌ Missing Telegram bot credentials.")
+        return
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+    payload = {
+        "chat_id": TELEGRAM_CHAT_ID,
+        "text": message,
+        "parse_mode": "Markdown"
+    }
+    try:
+        response = requests.post(url, json=payload)
+        print("✅ Telegram response:", response.status_code, response.text)
+    except Exception as e:
+        print("Telegram error:", e)
 
-@app.route("/webhook", methods=["POST"])
-def webhook():
-    data = request.get_json()
-    logging.info(f"Received data: {data}")
+# --- OKX Signature ---
+def get_timestamp():
+    return time.strftime('%Y-%m-%dT%H:%M:%S.000Z', time.gmtime())
 
-    signal = data.get("signal", "").upper()
-    pair = data.get("pair", "BTC-USDT")
-    sl_pct = data.get("sl_pct", 1)
-    tp1_pct = data.get("tp1_pct", 2)
-    tp2_pct = data.get("tp2_pct", 4)
-    risk = data.get("risk", "1%")
-    test = data.get("test", False)
+def generate_signature(timestamp, method, path, body):
+    prehash = f"{timestamp}{method}{path}{body}"
+    return hmac.new(OKX_SECRET_KEY.encode(), prehash.encode(), hashlib.sha256).hexdigest()
+
+# --- OKX ORDER ---
+def place_order(signal, pair, test=False):
+    path = "/api/v5/trade/order"
+    method = "POST"
+    timestamp = get_timestamp()
+    side = "buy" if signal == "LONG" else "sell"
+
+    body_dict = {
+        "instId": pair,
+        "tdMode": "cross",
+        "side": side,
+        "ordType": "market",
+        "sz": "1",
+        "tag": "ai-sniper"
+    }
+    body = json.dumps(body_dict)
+    sign = generate_signature(timestamp, method, path, body)
+
+    headers = {
+        "OK-ACCESS-KEY": OKX_API_KEY,
+        "OK-ACCESS-SIGN": sign,
+        "OK-ACCESS-TIMESTAMP": timestamp,
+        "OK-ACCESS-PASSPHRASE": OKX_PASSPHRASE,
+        "Content-Type": "application/json"
+    }
 
     if test:
-        msg = "🚨 *Test Alert Received!*"
-    elif signal == "LONG":
-        msg = (
-            f"🟢 *LONG Signal*\n"
-            f"Pair: `{pair}`\n"
-            f"Stop Loss: `{sl_pct}%`\n"
-            f"Take Profit 1: `{tp1_pct}%`\n"
-            f"Take Profit 2: `{tp2_pct}%`\n"
-            f"Risk: `{risk}`"
-        )
-    elif signal == "SHORT":
-        msg = (
-            f"🔴 *SHORT Signal*\n"
-            f"Pair: `{pair}`\n"
-            f"Stop Loss: `{sl_pct}%`\n"
-            f"Take Profit 1: `{tp1_pct}%`\n"
-            f"Take Profit 2: `{tp2_pct}%`\n"
-            f"Risk: `{risk}`"
-        )
-    else:
-        return jsonify({"error": "Invalid signal"}), 400
+        print("[TEST MODE] Order payload:", body)
+        send_telegram_message("🧪 *Test order triggered.*")
+        return {"status": "test order sent"}
 
-    try:
-        bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=msg, parse_mode=telegram.constants.ParseMode.MARKDOWN)
-        logging.info("Telegram message sent")
-        return jsonify({"status": "Message sent"})
-    except Exception as e:
-        logging.error(f"Error sending Telegram message: {e}")
-        return jsonify({"error": str(e)}), 500
+    response = requests.post(OKX_BASE_URL + path, headers=headers, data=body)
+    print("OKX response:", response.status_code, response.text)
+    return response.json()
 
-@app.route("/")
-def home():
-    return "Bot is alive!"
+# --- WEBHOOK ---
+@app.route("/webhook", methods=["POST"])
+def webhook():
+    data = request.json
+    print("📩 Received webhook:", data)
+
+    signal = data.get("signal")
+    pair = data.get("pair", "BTC-USDT")
+    test = data.get("test", False)
+
+    message = f"🚨 *{signal} Signal Received* for `{pair}`"
+    send_telegram_message(message)
+
+    result = place_order(signal, pair, test=test)
+    return jsonify(result)
+
+@app.route("/", methods=["GET"])
+def index():
+    return "✅ AI Sniper bot is running."
 
 if __name__ == "__main__":
-    app.run(debug=False, host="0.0.0.0", port=3000)
+    app.run(host="0.0.0.0", port=3000)
