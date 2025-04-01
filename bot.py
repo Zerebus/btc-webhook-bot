@@ -1,41 +1,47 @@
-from flask import Flask, request
-import os
-import json
-from telegram import Bot
-from telegram.constants import ParseMode
 
-app = Flask(__name__)
+import os
+from flask import Flask, request, jsonify
+from dotenv import load_dotenv
+from telegram import Bot, constants
+import asyncio
+
+load_dotenv()
+
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
+
+app = Flask(__name__)
 bot = Bot(token=TELEGRAM_BOT_TOKEN)
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
-    data = request.get_json()
-    print("✅ Received webhook data:", data)
+    data = request.json
+    print("Received webhook data:", data)
 
-    # Format message
-    signal = data.get("signal", "UNKNOWN")
-    pair = data.get("pair", "BTCUSDT.P")
-    sl = data.get("sl_pct", 1)
-    tp1 = data.get("tp1_pct", 1.25)
-    tp2 = data.get("tp2_pct", 2.5)
-    risk = data.get("risk", "1%")
-    test = data.get("test", False)
+    # Construct a message from the alert data
+    msg = (
+        f"📉 *{data['signal']} SIGNAL*\n\n"
+        f"*Pair:* {data['pair']}\n"
+        f"*Risk:* {data['risk']}\n"
+        f"*SL:* {data['sl_pct']}%\n"
+        f"*TP1:* {data['tp1_pct']}%\n"
+        f"*TP2:* {data['tp2_pct']}%\n"
+    )
 
-    message = f"""
-📉 <b>{'SHORT' if signal == 'SHORT' else 'LONG'} SIGNAL{' (Test Mode Active)' if test else ''}</b>
+    if data.get("test"):
+        msg = "🧪 *TEST MODE ACTIVE*\n\n" + msg
 
-<b>Pair:</b> {pair}
-<b>Risk:</b> {risk}
-<b>SL:</b> {sl}%
-<b>TP1:</b> {tp1}%
-<b>TP2:</b> {tp2}%
-"""
+    # Send message to Telegram asynchronously
+    asyncio.run(send_telegram_message(msg))
+    print("✅ Telegram alert sent successfully.")
+    return jsonify({"status": "ok"}), 200
 
-    bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=message, parse_mode=ParseMode.HTML)
-    print("📨 Telegram alert sent successfully.")
-    return "OK", 200
+async def send_telegram_message(message):
+    await bot.send_message(
+        chat_id=TELEGRAM_CHAT_ID,
+        text=message,
+        parse_mode=constants.ParseMode.MARKDOWN
+    )
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=10000)
+    app.run(debug=False, host="0.0.0.0", port=10000)
