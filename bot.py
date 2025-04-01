@@ -35,7 +35,7 @@ def place_order(signal, pair, sl_pct, tp1_pct, tp2_pct, risk, test):
         "side": side,
         "ordType": "market",
         "sz": size,
-        "tag": "ai-sniper-2.5"
+        "tag": "ai-sniper-2.6"
     }
 
     body_json = json.dumps(body)
@@ -77,8 +77,9 @@ def webhook():
 
 @app.route("/", methods=["GET"])
 def home():
-    return "AI Sniper 2.5 Webhook Bot is live!"
+    return "AI Sniper 2.6 Webhook Bot is live!"
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=3000)
+
 
