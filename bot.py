@@ -1,4 +1,4 @@
-import os
+""import os
 import logging
 import json
 import aiohttp
@@ -71,6 +71,6 @@ async def send_telegram_message(text):
                 logging.error(f"❌ Telegram error {resp.status}: {await resp.text()}")
 
 if __name__ == "__main__":
-    app.run(debug=False, port=5000)
+    app.run(debug=False, host="0.0.0.0", port=10000)
 
 
