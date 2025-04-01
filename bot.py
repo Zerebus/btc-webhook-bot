@@ -2,27 +2,20 @@ import os
 import logging
 import json
 import aiohttp
+import nest_asyncio
 import asyncio
-import nest_asyncio  # <-- NEW
 from flask import Flask, request, jsonify
 from dotenv import load_dotenv
 
 load_dotenv()
-nest_asyncio.apply()  # <-- NEW
+
+nest_asyncio.apply()
 
 app = Flask(__name__)
 logging.basicConfig(level=logging.INFO)
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
-
-# Shared aiohttp session
-session = None
-
-@app.before_first_request
-def create_session():
-    global session
-    session = aiohttp.ClientSession()
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
@@ -49,23 +42,21 @@ def webhook():
 <b><u>TP2:</u></b> {data['tp2_pct']}%
 """
 
-    loop = asyncio.get_event_loop()
+    # Start a new event loop for each request to avoid closed loop issues
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    loop.run_until_complete(send_message(TELEGRAM_CHAT_ID, message))
+    loop.close()
 
     if is_test:
-        logging.info("Test mode active. Sending Telegram alert only.")
-        loop.create_task(send_message(TELEGRAM_CHAT_ID, message))
+        logging.info("Test mode active. Telegram alert only.")
         return jsonify({"status": "Test alert sent to Telegram."}), 200
 
     # Real trade logic would go here (currently omitted)
     logging.info("Live mode: No trade logic active in this test.")
-    loop.create_task(send_message(TELEGRAM_CHAT_ID, message))
     return jsonify({"status": "Live alert (trade logic pending) sent to Telegram."}), 200
 
 async def send_message(chat_id, text):
-    global session
-    if session is None:
-        session = aiohttp.ClientSession()
-
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     payload = {
         "chat_id": chat_id,
@@ -74,11 +65,12 @@ async def send_message(chat_id, text):
         "disable_web_page_preview": True
     }
     try:
-        async with session.post(url, json=payload) as resp:
-            if resp.status != 200:
-                logging.error(f"Telegram API error: {resp.status} - {await resp.text()}")
-            else:
-                logging.info("Telegram alert sent successfully.")
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url, json=payload) as resp:
+                if resp.status != 200:
+                    logging.error(f"Telegram API error: {resp.status} - {await resp.text()}")
+                else:
+                    logging.info("Telegram alert sent successfully.")
     except Exception as e:
         logging.error(f"Telegram error: {e}")
 
