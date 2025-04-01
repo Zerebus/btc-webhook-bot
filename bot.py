@@ -17,12 +17,6 @@ TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 # Use a global variable for session and initialize later
 session = None
 
-@app.before_first_request
-def create_session():
-    global session
-    loop = asyncio.get_event_loop()
-    session = aiohttp.ClientSession(loop=loop)
-
 @app.route("/webhook", methods=["POST"])
 def webhook():
     data = request.json
@@ -36,7 +30,7 @@ def webhook():
     is_test = data.get("test", False)
 
     # Format Telegram message
-    emoji = "\ud83d\udcc8" if data["signal"].upper() == "LONG" else "\ud83d\udcc9"
+    emoji = "📈" if data["signal"].upper() == "LONG" else "📉"
     title = f"<b>{emoji} {data['signal'].upper()} SIGNAL {'(Test Mode Active)' if is_test else ''}</b>"
     message = f"""
 {title}
@@ -80,5 +74,5 @@ async def send_message(chat_id, text):
         logging.error(f"Telegram error: {e}")
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)), debug=False)
+    app.run(debug=False, port=5000)
 
