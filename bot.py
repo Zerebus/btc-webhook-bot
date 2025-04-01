@@ -1,10 +1,6 @@
 
 from flask import Flask, request, jsonify
 import os
-import logging
-from dotenv import load_dotenv
-load_dotenv("/etc/secrets/.env")  # Load secrets from Render's secret file
-
 import requests
 from dotenv import load_dotenv
 
