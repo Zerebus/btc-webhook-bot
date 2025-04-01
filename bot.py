@@ -30,7 +30,7 @@ def webhook():
     is_test = data.get("test", False)
 
     # Format Telegram message
-    emoji = "📈" if data["signal"].upper() == "LONG" else "📉"
+    emoji = "\ud83d\udcc8" if data["signal"].upper() == "LONG" else "\ud83d\udcc9"
     title = f"<b>{emoji} {data['signal'].upper()} SIGNAL {'(Test Mode Active)' if is_test else ''}</b>"
     message = f"""
 {title}
@@ -74,5 +74,6 @@ async def send_message(chat_id, text):
         logging.error(f"Telegram error: {e}")
 
 if __name__ == "__main__":
-    app.run(debug=False, port=5000)
+    app.run(debug=False, host="0.0.0.0", port=10000)
+
 
