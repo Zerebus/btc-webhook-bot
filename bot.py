@@ -1,3 +1,26 @@
+
+import os
+import requests
+
+def send_telegram_message(message):
+    TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+    TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
+    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+        print("Missing Telegram credentials in environment variables.")
+        return
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+    payload = {
+        "chat_id": TELEGRAM_CHAT_ID,
+        "text": message,
+        "parse_mode": "Markdown"
+    }
+    try:
+        response = requests.post(url, json=payload)
+        if response.status_code != 200:
+            print(f"Telegram error {response.status_code}: {response.text}")
+    except Exception as e:
+        print(f"Failed to send Telegram message: {e}")
+
 from flask import Flask, request, jsonify
 import requests
 import time
@@ -14,29 +37,12 @@ SECRET_KEY = os.getenv("OKX_SECRET_KEY")
 PASSPHRASE = os.getenv("OKX_PASSPHRASE")
 BASE_URL = "https://www.okx.com"
 
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
-
 def get_timestamp():
     return datetime.datetime.utcnow().isoformat("T", "milliseconds") + "Z"
 
 def generate_signature(timestamp, method, path, body):
     prehash = f"{timestamp}{method.upper()}{path}{body}"
     return hmac.new(SECRET_KEY.encode(), prehash.encode(), hashlib.sha256).hexdigest()
-
-def send_telegram_message(message):
-    try:
-        url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-        payload = {
-            "chat_id": TELEGRAM_CHAT_ID,
-            "text": message,
-            "parse_mode": "Markdown"
-        }
-        response = requests.post(url, json=payload)
-        return response.status_code == 200
-    except Exception as e:
-        print("Telegram send error:", e)
-        return False
 
 def place_order(signal, pair, sl_pct, tp1_pct, tp2_pct, risk, test):
     timestamp = get_timestamp()
@@ -86,15 +92,10 @@ def webhook():
         risk = data["risk"]
         test = data.get("test", False)
 
-        # Compose message
-        message = f"🚨 *AI Sniper Signal*\nSignal: *{signal}*\nPair: *{pair}*\nSL: {sl_pct}% | TP1: {tp1_pct}% | TP2: {tp2_pct}%\nRisk: {risk}"
-        send_telegram_message(message)
-
         result = place_order(signal, pair, sl_pct, tp1_pct, tp2_pct, risk, test)
         return jsonify({"status": "order sent", "okx_response": result})
 
     except Exception as e:
-        send_telegram_message(f"❌ *Bot Error:* {str(e)}")
         return jsonify({"status": "error", "message": str(e)})
 
 @app.route("/", methods=["GET"])
@@ -103,6 +104,5 @@ def home():
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=3000)
-
 
 
