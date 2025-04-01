@@ -6,7 +6,6 @@ import hashlib
 import json
 import os
 import datetime
-import base64
 
 app = Flask(__name__)
 
@@ -20,16 +19,15 @@ def get_timestamp():
 
 def generate_signature(timestamp, method, path, body):
     prehash = f"{timestamp}{method.upper()}{path}{body}"
-    signature = hmac.new(SECRET_KEY.encode(), prehash.encode(), hashlib.sha256).digest()
-    return base64.b64encode(signature).decode()
+    return hmac.new(SECRET_KEY.encode(), prehash.encode(), hashlib.sha256).hexdigest()
 
-def place_order(signal, pair, sl_pct, tp1_pct, tp2_pct, risk, test=False):
+def place_order(signal, pair, sl_pct, tp1_pct, tp2_pct, risk, test):
     timestamp = get_timestamp()
     path = "/api/v5/trade/order"
     method = "POST"
 
     side = "buy" if signal == "LONG" else "sell"
-    size = "1"
+    size = "1"  # In production, this will be calculated based on risk management
 
     body = {
         "instId": pair,
@@ -37,7 +35,7 @@ def place_order(signal, pair, sl_pct, tp1_pct, tp2_pct, risk, test=False):
         "side": side,
         "ordType": "market",
         "sz": size,
-        "tag": "webhook-bot"
+        "tag": "ai-sniper-2.5"
     }
 
     body_json = json.dumps(body)
@@ -79,7 +77,7 @@ def webhook():
 
 @app.route("/", methods=["GET"])
 def home():
-    return "Webhook Bot is live!"
+    return "AI Sniper 2.5 Webhook Bot is live!"
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=3000)
