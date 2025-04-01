@@ -3,10 +3,12 @@ import logging
 import json
 import aiohttp
 import asyncio
+import nest_asyncio  # <-- NEW
 from flask import Flask, request, jsonify
 from dotenv import load_dotenv
 
 load_dotenv()
+nest_asyncio.apply()  # <-- NEW
 
 app = Flask(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -14,8 +16,13 @@ logging.basicConfig(level=logging.INFO)
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
-# Use a global variable for session and initialize later
+# Shared aiohttp session
 session = None
+
+@app.before_first_request
+def create_session():
+    global session
+    session = aiohttp.ClientSession()
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
@@ -42,14 +49,16 @@ def webhook():
 <b><u>TP2:</u></b> {data['tp2_pct']}%
 """
 
+    loop = asyncio.get_event_loop()
+
     if is_test:
         logging.info("Test mode active. Sending Telegram alert only.")
-        asyncio.run(send_message(TELEGRAM_CHAT_ID, message))
+        loop.create_task(send_message(TELEGRAM_CHAT_ID, message))
         return jsonify({"status": "Test alert sent to Telegram."}), 200
 
     # Real trade logic would go here (currently omitted)
     logging.info("Live mode: No trade logic active in this test.")
-    asyncio.run(send_message(TELEGRAM_CHAT_ID, message))
+    loop.create_task(send_message(TELEGRAM_CHAT_ID, message))
     return jsonify({"status": "Live alert (trade logic pending) sent to Telegram."}), 200
 
 async def send_message(chat_id, text):
@@ -74,6 +83,6 @@ async def send_message(chat_id, text):
         logging.error(f"Telegram error: {e}")
 
 if __name__ == "__main__":
-    app.run(debug=False, host="0.0.0.0", port=10000)
+    app.run(debug=False, port=5000)
 
 
