@@ -1,69 +1,84 @@
 import os
-import json
 import logging
-import asyncio
+import json
 import aiohttp
-from flask import Flask, request
-from telegram import Bot
-from telegram.constants import ParseMode
+import asyncio
+from flask import Flask, request, jsonify
 from dotenv import load_dotenv
 
 load_dotenv()
 
+app = Flask(__name__)
+logging.basicConfig(level=logging.INFO)
+
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
-app = Flask(__name__)
-logging.basicConfig(level=logging.INFO)
-bot = Bot(token=TELEGRAM_BOT_TOKEN)
-session = None  # will be initialized in before_serving
+# Use a global variable for session and initialize later
+session = None
 
-@app.before_serving
-async def create_session():
+@app.before_first_request
+def create_session():
     global session
-    session = aiohttp.ClientSession()
-
-@app.after_serving
-async def close_session():
-    await session.close()
+    loop = asyncio.get_event_loop()
+    session = aiohttp.ClientSession(loop=loop)
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
-    try:
-        data = request.json
-        logging.info("Received webhook data: %s", data)
+    data = request.json
+    logging.info(f"Received webhook data: {data}")
 
-        # Extract data safely
-        signal = data.get("signal", "N/A")
-        pair = data.get("pair", "N/A")
-        sl_pct = data.get("sl_pct", "N/A")
-        tp1_pct = data.get("tp1_pct", "N/A")
-        tp2_pct = data.get("tp2_pct", "N/A")
-        risk = data.get("risk", "N/A")
-        test_mode = data.get("test", True)
+    # Required fields
+    required_fields = ["signal", "pair", "sl_pct", "tp1_pct", "tp2_pct", "risk"]
+    if not all(field in data for field in required_fields):
+        return jsonify({"error": "Missing fields in webhook data"}), 400
 
-        # Build fancy message
-        title = f"\uD83D\uDCC8 <b>{signal} SIGNAL</b> {'<i>(Test Mode Active)</i>' if test_mode else ''}"
-        details = f"""
-<b>Pair:</b> {pair}
-<b>Risk:</b> {risk}
-<b>SL:</b> {sl_pct}
-<b>TP1:</b> {tp1_pct}
-<b>TP2:</b> {tp2_pct}
+    is_test = data.get("test", False)
+
+    # Format Telegram message
+    emoji = "\ud83d\udcc8" if data["signal"].upper() == "LONG" else "\ud83d\udcc9"
+    title = f"<b>{emoji} {data['signal'].upper()} SIGNAL {'(Test Mode Active)' if is_test else ''}</b>"
+    message = f"""
+{title}
+
+<b><u>Pair:</u></b> {data['pair']}
+<b><u>Risk:</u></b> {data['risk']}
+<b><u>SL:</u></b> {data['sl_pct']}%
+<b><u>TP1:</u></b> {data['tp1_pct']}%
+<b><u>TP2:</u></b> {data['tp2_pct']}%
 """
-        message = f"{title}\n{details}"
 
-        asyncio.run(send_message(message))
-        logging.info("Test alert sent to Telegram.")
+    if is_test:
+        logging.info("Test mode active. Sending Telegram alert only.")
+        asyncio.run(send_message(TELEGRAM_CHAT_ID, message))
+        return jsonify({"status": "Test alert sent to Telegram."}), 200
 
-        return {"status": "ok"}, 200
+    # Real trade logic would go here (currently omitted)
+    logging.info("Live mode: No trade logic active in this test.")
+    asyncio.run(send_message(TELEGRAM_CHAT_ID, message))
+    return jsonify({"status": "Live alert (trade logic pending) sent to Telegram."}), 200
 
+async def send_message(chat_id, text):
+    global session
+    if session is None:
+        session = aiohttp.ClientSession()
+
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+    payload = {
+        "chat_id": chat_id,
+        "text": text,
+        "parse_mode": "HTML",
+        "disable_web_page_preview": True
+    }
+    try:
+        async with session.post(url, json=payload) as resp:
+            if resp.status != 200:
+                logging.error(f"Telegram API error: {resp.status} - {await resp.text()}")
+            else:
+                logging.info("Telegram alert sent successfully.")
     except Exception as e:
-        logging.exception("Webhook processing failed")
-        return {"error": str(e)}, 500
-
-async def send_message(text):
-    await bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=text, parse_mode=ParseMode.HTML)
+        logging.error(f"Telegram error: {e}")
 
 if __name__ == "__main__":
-    app.run(debug=True, port=5000)
+    app.run(debug=False, port=5000)
+
