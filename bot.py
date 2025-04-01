@@ -1,85 +1,59 @@
-from flask import Flask, request, jsonify
-import requests
-import time
-import hmac
-import hashlib
-import json
 import os
-import datetime
+import logging
+from flask import Flask, request, jsonify
+from telegram import Bot
+from dotenv import load_dotenv
 
+# Load environment variables
+load_dotenv()
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
+
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Initialize Flask app and Telegram bot
 app = Flask(__name__)
-
-API_KEY = os.getenv("OKX_API_KEY")
-SECRET_KEY = os.getenv("OKX_SECRET_KEY")
-PASSPHRASE = os.getenv("OKX_PASSPHRASE")
-BASE_URL = "https://www.okx.com"
-
-def get_timestamp():
-    return datetime.datetime.utcnow().isoformat("T", "milliseconds") + "Z"
-
-def generate_signature(timestamp, method, path, body):
-    prehash = f"{timestamp}{method.upper()}{path}{body}"
-    return hmac.new(SECRET_KEY.encode(), prehash.encode(), hashlib.sha256).hexdigest()
-
-def place_order(signal, pair, sl_pct, tp1_pct, tp2_pct, risk, test):
-    timestamp = get_timestamp()
-    path = "/api/v5/trade/order"
-    method = "POST"
-
-    side = "buy" if signal == "LONG" else "sell"
-    size = "1"  # In production, this will be calculated based on risk management
-
-    body = {
-        "instId": pair,
-        "tdMode": "cross",
-        "side": side,
-        "ordType": "market",
-        "sz": size,
-        "tag": "ai-sniper-2.6"
-    }
-
-    body_json = json.dumps(body)
-    signature = generate_signature(timestamp, method, path, body_json)
-
-    headers = {
-        "OK-ACCESS-KEY": API_KEY,
-        "OK-ACCESS-SIGN": signature,
-        "OK-ACCESS-TIMESTAMP": timestamp,
-        "OK-ACCESS-PASSPHRASE": PASSPHRASE,
-        "Content-Type": "application/json"
-    }
-
-    if test:
-        print("DEBUG BODY:", body_json)
-        print("DEBUG HEADERS:", headers)
-        return {"debug": True, "body": body, "headers": headers}
-
-    response = requests.post(f"{BASE_URL}{path}", headers=headers, data=body_json)
-    return response.json()
+bot = Bot(token=TELEGRAM_BOT_TOKEN)
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
     data = request.get_json()
-    try:
-        signal = data["signal"]
-        pair = data["pair"]
-        sl_pct = float(data["sl_pct"])
-        tp1_pct = float(data["tp1_pct"])
-        tp2_pct = float(data["tp2_pct"])
-        risk = data["risk"]
-        test = data.get("test", False)
+    logger.info(f"Received webhook: {data}")
 
-        result = place_order(signal, pair, sl_pct, tp1_pct, tp2_pct, risk, test)
-        return jsonify({"status": "order sent", "okx_response": result})
+    try:
+        if data.get("test"):
+            msg = "✅ Test alert received from your bot!"
+        else:
+            signal = data.get("signal")
+            pair = data.get("pair")
+            sl = data.get("sl_pct")
+            tp1 = data.get("tp1_pct")
+            tp2 = data.get("tp2_pct")
+            risk = data.get("risk")
+
+            msg = (
+                f"🚨 *{signal.upper()} Signal*\n"
+                f"Pair: `{pair}`\n"
+                f"SL: `{sl}%`, TP1: `{tp1}%`, TP2: `{tp2}%`\n"
+                f"Risk: `{risk}`"
+            )
+
+        if msg:
+            bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=msg, parse_mode="Markdown")
+            logger.info("Telegram message sent.")
+            return jsonify({"status": "message sent"})
+        else:
+            logger.error("Message was None.")
+            return jsonify({"status": "error", "reason": "message was None"}), 500
 
     except Exception as e:
-        return jsonify({"status": "error", "message": str(e)})
-
-@app.route("/", methods=["GET"])
-def home():
-    return "AI Sniper 2.6 Webhook Bot is live!"
+        logger.exception("Failed to send Telegram message.")
+        return jsonify({"status": "error", "reason": str(e)}), 500
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=3000)
+    app.run(debug=False)
+
 
 
