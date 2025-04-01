@@ -1,63 +1,67 @@
-
-from flask import Flask, request, jsonify
 import os
-import requests
-from dotenv import load_dotenv
-
-# Load environment variables from Render secret file
-load_dotenv("/etc/secrets/.env")
+import logging
+from flask import Flask, request, jsonify
+import telegram
 
 app = Flask(__name__)
 
-# Telegram details
+# Setup logging
+logging.basicConfig(level=logging.INFO)
+
+# Load Telegram credentials from environment variables
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
-def send_telegram_message(message):
-    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
-        print("⚠️ Telegram credentials missing!")
-        return
-    try:
-        url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-        payload = {
-            "chat_id": TELEGRAM_CHAT_ID,
-            "text": message,
-            "parse_mode": "Markdown"
-        }
-        r = requests.post(url, json=payload)
-        if r.status_code != 200:
-            print("❌ Telegram message failed:", r.text)
-        else:
-            print("✅ Telegram message sent!")
-    except Exception as e:
-        print(f"Telegram send error: {e}")
+# Initialize the Telegram bot
+bot = telegram.Bot(token=TELEGRAM_BOT_TOKEN)
 
-@app.route('/')
-def home():
-    return '✅ Bot is alive!'
-
-@app.route('/webhook', methods=['POST'])
+@app.route("/webhook", methods=["POST"])
 def webhook():
-    data = request.json
-    print("Received webhook:", data)
+    data = request.get_json()
+    logging.info(f"Received data: {data}")
 
-    # Send test Telegram notification if `test = true`
-    if data.get("test"):
-        message = (
-            "📣 *Test Alert Received!*
+    signal = data.get("signal", "").upper()
+    pair = data.get("pair", "BTC-USDT")
+    sl_pct = data.get("sl_pct", 1)
+    tp1_pct = data.get("tp1_pct", 2)
+    tp2_pct = data.get("tp2_pct", 4)
+    risk = data.get("risk", "1%")
+    test = data.get("test", False)
 
-"
-            f"Signal: `{data.get('signal')}`
-"
-            f"Pair: `{data.get('pair')}`
-"
-            f"TP1: `{data.get('tp1_pct')}%` | TP2: `{data.get('tp2_pct')}%`
-"
-            f"SL: `{data.get('sl_pct')}%` | Risk: `{data.get('risk')}`"
+    if test:
+        msg = "🚨 *Test Alert Received!*"
+    elif signal == "LONG":
+        msg = (
+            f"🟢 *LONG Signal*\n"
+            f"Pair: `{pair}`\n"
+            f"Stop Loss: `{sl_pct}%`\n"
+            f"Take Profit 1: `{tp1_pct}%`\n"
+            f"Take Profit 2: `{tp2_pct}%`\n"
+            f"Risk: `{risk}`"
         )
-        send_telegram_message(message)
+    elif signal == "SHORT":
+        msg = (
+            f"🔴 *SHORT Signal*\n"
+            f"Pair: `{pair}`\n"
+            f"Stop Loss: `{sl_pct}%`\n"
+            f"Take Profit 1: `{tp1_pct}%`\n"
+            f"Take Profit 2: `{tp2_pct}%`\n"
+            f"Risk: `{risk}`"
+        )
+    else:
+        return jsonify({"error": "Invalid signal"}), 400
 
-    return jsonify({"status": "order sent", "debug": True})
+    try:
+        bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=msg, parse_mode=telegram.constants.ParseMode.MARKDOWN)
+        logging.info("Telegram message sent")
+        return jsonify({"status": "Message sent"})
+    except Exception as e:
+        logging.error(f"Error sending Telegram message: {e}")
+        return jsonify({"error": str(e)}), 500
 
-if __name__ == '__main__':
-    app.run(debug=False)
+@app.route("/")
+def home():
+    return "Bot is alive!"
+
+if __name__ == "__main__":
+    app.run(debug=False, host="0.0.0.0", port=3000)
